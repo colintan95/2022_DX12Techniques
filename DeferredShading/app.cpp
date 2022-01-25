@@ -25,10 +25,11 @@ App::App(HWND window_hwnd, int window_width, int window_height)
     scissor_rect_(0, 0, window_width, window_height) {}
 
 void App::Initialize() {
+  InitDeviceAndSwapChain();
   InitPipeline();
 }
 
-void App::InitPipeline() {
+void App::InitDeviceAndSwapChain() {
   UINT factory_flags = 0;
 
 #if defined(_DEBUG)
@@ -68,6 +69,29 @@ void App::InitPipeline() {
   ThrowIfFailed(factory->CreateSwapChainForHwnd(command_queue_.Get(), window_hwnd_,
                                                 &swap_chain_desc, nullptr, nullptr, &swap_chain));
   ThrowIfFailed(swap_chain.As(&swap_chain_));
+}
+
+void App::InitPipeline() {
+  D3D12_FEATURE_DATA_ROOT_SIGNATURE feature_data;
+  feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+  if (FAILED(device_->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &feature_data, 
+                                          sizeof(feature_data)))) {
+    feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+  }
+
+  CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
+  root_signature_desc.Init_1_1(0, nullptr, 0, nullptr,
+                               D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+  ComPtr<ID3DBlob> signature;
+  ComPtr<ID3DBlob> error;
+  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, 
+                                                      feature_data.HighestVersion, &signature,
+                                                      &error));
+  ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
+                                             signature->GetBufferSize(), 
+                                             IID_PPV_ARGS(&root_signature_)));
 }
 
 void App::Cleanup() {

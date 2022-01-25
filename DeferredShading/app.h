@@ -18,6 +18,7 @@ public:
   void RenderFrame();
 
 private:
+  void InitDeviceAndSwapChain();
   void InitPipeline();
 
   HWND window_hwnd_;
@@ -30,6 +31,8 @@ private:
   Microsoft::WRL::ComPtr<ID3D12Device> device_;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> command_queue_;
   Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
+
+  Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
 };
 
 #endif  // APP_H_
