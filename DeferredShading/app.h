@@ -5,6 +5,8 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include <vector>
+
 #include "d3dx12.h"
 
 constexpr int kNumFrames = 3;
@@ -29,6 +31,8 @@ private:
   void InitFence();
 
   void InitResources();
+
+  void UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer);
 
   void MoveToNextFrame();
 
@@ -60,12 +64,16 @@ private:
 
     void InitPipeline();
     void InitDescriptors();
+    void CreateBuffersAndUploadData();
 
   private:
     App* app_;
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
+    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_;
@@ -87,6 +95,8 @@ private:
   UINT sampler_descriptor_size_ = 0;
 
   Microsoft::WRL::ComPtr<ID3D12Resource> depth_stencil_;
+
+  std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> upload_buffers_;
 
   Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
   D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;

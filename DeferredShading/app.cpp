@@ -353,33 +353,13 @@ void App::InitResources() {
                                                     IID_PPV_ARGS(&vertex_buffer_)));
   }
 
-  Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_upload;
-
-  {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
-
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc,
-                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                   IID_PPV_ARGS(&vertex_buffer_upload)));
-
-    D3D12_SUBRESOURCE_DATA subresource_data = {};
-    subresource_data.pData = vertex_data;
-    subresource_data.RowPitch = sizeof(vertex_data);
-    subresource_data.SlicePitch = subresource_data.RowPitch;
-
-    UpdateSubresources<1>(command_list_.Get(), vertex_buffer_.Get(), vertex_buffer_upload.Get(), 0,
-                          0, 1, &subresource_data);
-
-    D3D12_RESOURCE_BARRIER barrier =
-        CD3DX12_RESOURCE_BARRIER::Transition(vertex_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-                                             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    command_list_->ResourceBarrier(1, &barrier);
-  }
+  UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
 
   vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
   vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
   vertex_buffer_view_.StrideInBytes = sizeof(float) * 3;
+
+  lighting_pass_.CreateBuffersAndUploadData();
 
   ThrowIfFailed(command_list_->Close());
   ID3D12CommandList* command_lists[] = { command_list_.Get() };
@@ -387,6 +367,33 @@ void App::InitResources() {
 
   // TODO: Don't stall here.
   WaitForGpu();
+}
+
+void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {
+  Microsoft::WRL::ComPtr<ID3D12Resource> upload_buffer;
+
+  CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+  CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(data_size);
+
+  ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc,
+                                                  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                  IID_PPV_ARGS(&upload_buffer)));
+
+  D3D12_SUBRESOURCE_DATA subresource_data = {};
+  subresource_data.pData = data;
+  subresource_data.RowPitch = data_size;
+  subresource_data.SlicePitch = subresource_data.RowPitch;
+
+  UpdateSubresources<1>(command_list_.Get(), dst_buffer, upload_buffer.Get(), 0, 0, 1, 
+                        &subresource_data);
+
+  D3D12_RESOURCE_BARRIER barrier =
+      CD3DX12_RESOURCE_BARRIER::Transition(dst_buffer, D3D12_RESOURCE_STATE_COPY_DEST,
+                                           D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+  command_list_->ResourceBarrier(1, &barrier);
+
+  // Upload buffers must be kept alive until the copy commands are completed.
+  upload_buffers_.push_back(upload_buffer);
 }
 
 void App::LightingPass::InitDescriptors() {
@@ -408,6 +415,32 @@ void App::LightingPass::InitDescriptors() {
   sampler_desc.BorderColor[3] = 0;
      
   app_->device_->CreateSampler(&sampler_desc, sampler_handle_);
+}
+
+void App::LightingPass::CreateBuffersAndUploadData() {
+  // (x, y) - screen coords, (u,v) - texcoords.
+  const float vertex_data[] = {
+    1.f, 1.f, 1.f, 0.f,
+    1.f, -1.f, 1.f, 1.f,
+    -1.f, -1.f, 0.f, 1.f,
+    -1.f, 1.f, 0.f, 0.f
+  };
+
+  {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
+
+    ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, 
+                                                         &buffer_desc, 
+                                                         D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                         IID_PPV_ARGS(&vertex_buffer_)));
+  }
+
+  app_->UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
+
+  vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
+  vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
+  vertex_buffer_view_.StrideInBytes = sizeof(float) * 4;
 }
 
 void App::Cleanup() {
