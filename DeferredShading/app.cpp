@@ -18,7 +18,8 @@ App::App(HWND window_hwnd, int window_width, int window_height)
     window_width_(window_width),
     window_height_(window_height),
     viewport_(0.f, 0.f, static_cast<float>(window_width), static_cast<float>(window_height)),
-    scissor_rect_(0, 0, window_width, window_height) {}
+    scissor_rect_(0, 0, window_width, window_height),
+    lighting_pass_(this) {}
 
 void App::Initialize() {
   InitDeviceAndSwapChain();
@@ -87,7 +88,7 @@ void App::InitPipelines() {
 
   InitGeometryPassPipeline();
 
-  InitLightingPassPipeline();
+  lighting_pass_.InitPipeline();
 }
 
 void App::InitGeometryPassPipeline() {
@@ -138,7 +139,7 @@ void App::InitGeometryPassPipeline() {
                                                      IID_PPV_ARGS(&geometry_pass_.pipeline)));
 }
 
-void App::InitLightingPassPipeline() {
+void App::LightingPass::InitPipeline() {
   CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
   ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
   ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
@@ -153,11 +154,12 @@ void App::InitLightingPassPipeline() {
 
   ComPtr<ID3DBlob> signature;
   ComPtr<ID3DBlob> error;
-  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, root_signature_version_, 
-                                                      &signature, &error));
-  ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
+  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc,
+                                                      app_->root_signature_version_,  &signature, 
+                                                      &error));
+  ThrowIfFailed(app_->device_->CreateRootSignature(0, signature->GetBufferPointer(),
                                              signature->GetBufferSize(), 
-                                             IID_PPV_ARGS(&lighting_pass_.root_signature)));
+                                             IID_PPV_ARGS(&root_signature_)));
 
   std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"lighting_pass_vs.cso");
   D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
@@ -176,7 +178,7 @@ void App::InitLightingPassPipeline() {
 
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
   pso_desc.InputLayout = input_layout_desc;
-  pso_desc.pRootSignature = lighting_pass_.root_signature.Get();
+  pso_desc.pRootSignature = root_signature_.Get();
   pso_desc.VS = vertex_shader;
   pso_desc.PS = pixel_shader;
   pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -189,8 +191,8 @@ void App::InitLightingPassPipeline() {
   pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
   pso_desc.SampleDesc.Count = 1;
 
-  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, 
-                                                     IID_PPV_ARGS(&lighting_pass_.pipeline)));
+  ThrowIfFailed(app_->device_->CreateGraphicsPipelineState(&pso_desc, 
+                                                           IID_PPV_ARGS(&pipeline_)));
 }
 
 void App::InitCommandAllocators() {
@@ -331,24 +333,7 @@ void App::InitResources() {
   sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle(sampler_heap_->GetCPUDescriptorHandleForHeapStart());
-
-  D3D12_SAMPLER_DESC sampler_desc{};
-  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.MinLOD = 0;
-  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
-  sampler_desc.MipLODBias = 0.0f;
-  sampler_desc.MaxAnisotropy = 1;
-  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-  sampler_desc.BorderColor[0] = 0;
-  sampler_desc.BorderColor[1] = 0;
-  sampler_desc.BorderColor[2] = 0;
-  sampler_desc.BorderColor[3] = 0;
-     
-  device_->CreateSampler(&sampler_desc, sampler_handle);
+  lighting_pass_.InitDescriptors();
 
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
@@ -402,6 +387,27 @@ void App::InitResources() {
 
   // TODO: Don't stall here.
   WaitForGpu();
+}
+
+void App::LightingPass::InitDescriptors() {
+  sampler_handle_ = app_->sampler_heap_->GetCPUDescriptorHandleForHeapStart();
+
+  D3D12_SAMPLER_DESC sampler_desc{};
+  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.MinLOD = 0;
+  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
+  sampler_desc.MipLODBias = 0.0f;
+  sampler_desc.MaxAnisotropy = 1;
+  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+  sampler_desc.BorderColor[0] = 0;
+  sampler_desc.BorderColor[1] = 0;
+  sampler_desc.BorderColor[2] = 0;
+  sampler_desc.BorderColor[3] = 0;
+     
+  app_->device_->CreateSampler(&sampler_desc, sampler_handle_);
 }
 
 void App::Cleanup() {

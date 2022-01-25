@@ -24,7 +24,6 @@ private:
 
   void InitPipelines();
   void InitGeometryPassPipeline();
-  void InitLightingPassPipeline();
 
   void InitCommandAllocators();
   void InitFence();
@@ -55,8 +54,26 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
   };
 
+  class LightingPass {
+  public:
+    LightingPass(App* app) : app_(app) {}
+
+    void InitPipeline();
+    void InitDescriptors();
+
+  private:
+    App* app_;
+
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle_;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_;
+  };
+
   Pass geometry_pass_;
-  Pass lighting_pass_;
+
+  LightingPass lighting_pass_;
 
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
 
