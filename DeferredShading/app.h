@@ -64,6 +64,10 @@ private:
   UINT rtv_descriptor_size_ = 0;
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsv_heap_;
   UINT dsv_descriptor_size_ = 0;
+  Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srv_heap_;
+  UINT srv_descriptor_size_ = 0;
+  Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> sampler_heap_;
+  UINT sampler_descriptor_size_ = 0;
 
   Microsoft::WRL::ComPtr<ID3D12Resource> depth_stencil_;
 

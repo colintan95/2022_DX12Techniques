@@ -222,7 +222,7 @@ void App::InitResources() {
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
     CD3DX12_RESOURCE_DESC resource_desc =
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, window_width_, window_height_, 1,
-                                     0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+                                     1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
     D3D12_CLEAR_VALUE clear_value{};
     clear_value.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -269,7 +269,7 @@ void App::InitResources() {
     rtv_handle.Offset(1, rtv_descriptor_size_);
   }
 
-  D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
+  D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
   dsv_heap_desc.NumDescriptors = 1;
   dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
   dsv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
@@ -294,12 +294,62 @@ void App::InitResources() {
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
 
-    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc = {};
+    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
     depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
     depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
     device_->CreateDepthStencilView(depth_stencil_.Get(), &depth_stencil_desc, dsv_handle);
   }
+
+  D3D12_DESCRIPTOR_HEAP_DESC srv_heap_desc{};
+  srv_heap_desc.NumDescriptors = kNumFrames;
+  srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ThrowIfFailed(device_->CreateDescriptorHeap(&srv_heap_desc, IID_PPV_ARGS(&srv_heap_)));
+
+  srv_descriptor_size_ =
+       device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(srv_heap_->GetCPUDescriptorHandleForHeapStart());
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    // TODO: Fix the mip levels here.
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+    srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Texture2D.MipLevels = -1;
+
+    device_->CreateShaderResourceView(frames_[i].geometry_pass_render_target.Get(), &srv_desc, 
+                                      srv_handle);
+
+    srv_handle.Offset(1, srv_descriptor_size_);
+  }
+
+  D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
+  sampler_heap_desc.NumDescriptors = 1;
+  sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+  sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle(sampler_heap_->GetCPUDescriptorHandleForHeapStart());
+
+  D3D12_SAMPLER_DESC sampler_desc{};
+  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.MinLOD = 0;
+  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
+  sampler_desc.MipLODBias = 0.0f;
+  sampler_desc.MaxAnisotropy = 1;
+  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+  sampler_desc.BorderColor[0] = 0;
+  sampler_desc.BorderColor[1] = 0;
+  sampler_desc.BorderColor[2] = 0;
+  sampler_desc.BorderColor[3] = 0;
+     
+  device_->CreateSampler(&sampler_desc, sampler_handle);
 
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
