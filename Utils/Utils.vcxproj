@@ -145,6 +145,7 @@
   <ItemGroup>
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="dx_utils.h" />
+    <ClInclude Include="ReadData.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dx_utils.cpp" />

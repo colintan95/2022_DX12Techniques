@@ -33,6 +33,7 @@ private:
   Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
 
   Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_state_;
 };
 
 #endif  // APP_H_

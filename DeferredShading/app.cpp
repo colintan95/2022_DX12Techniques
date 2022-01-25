@@ -5,8 +5,11 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include <vector>
+
 #include "d3dx12.h"
 #include "dx_utils.h"
+#include "ReadData.h"
 
 using Microsoft::WRL::ComPtr;
 using DX::ThrowIfFailed;
@@ -50,7 +53,7 @@ void App::InitDeviceAndSwapChain() {
 
   ThrowIfFailed(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device_)));
 
-  DXGI_SWAP_CHAIN_DESC1 swap_chain_desc = {};
+  DXGI_SWAP_CHAIN_DESC1 swap_chain_desc{};
   swap_chain_desc.BufferCount = kNumFrames;
   swap_chain_desc.Width = window_width_;
   swap_chain_desc.Height = window_height_;
@@ -59,7 +62,7 @@ void App::InitDeviceAndSwapChain() {
   swap_chain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
   swap_chain_desc.SampleDesc.Count = 1;
 
-  D3D12_COMMAND_QUEUE_DESC queue_desc = {};
+  D3D12_COMMAND_QUEUE_DESC queue_desc{};
   queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
   queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
@@ -92,6 +95,38 @@ void App::InitPipeline() {
   ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
                                              signature->GetBufferSize(), 
                                              IID_PPV_ARGS(&root_signature_)));
+
+  std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"scene_vs.cso");
+  D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
+
+  std::vector<uint8_t> pixel_shader_data = DX::ReadData(L"scene_ps.cso");
+  D3D12_SHADER_BYTECODE pixel_shader = { pixel_shader_data.data(), pixel_shader_data.size() };
+
+  D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
+     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+      0}
+  };
+
+  D3D12_INPUT_LAYOUT_DESC input_layout_desc{};
+  input_layout_desc.pInputElementDescs = input_element_descs;
+  input_layout_desc.NumElements = _countof(input_element_descs);
+
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
+  pso_desc.InputLayout = input_layout_desc;
+  pso_desc.pRootSignature = root_signature_.Get();
+  pso_desc.VS = vertex_shader;
+  pso_desc.PS = pixel_shader;
+  pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  pso_desc.SampleMask = UINT_MAX;
+  pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  pso_desc.NumRenderTargets = 1;
+  pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+  pso_desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+  pso_desc.SampleDesc.Count = 1;
+
+  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_state_)));
 }
 
 void App::Cleanup() {
