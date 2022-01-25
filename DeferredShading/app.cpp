@@ -204,6 +204,17 @@ void App::InitCommandAllocators() {
                                            geometry_pass_.pipeline.Get(), 
                                            IID_PPV_ARGS(&command_list_)));
   ThrowIfFailed(command_list_->Close());
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(device_->CreateCommandAllocator(
+        D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frames_[i].lighting_pass_command_allocator)));
+  }
+
+  ThrowIfFailed(device_->CreateCommandList(
+      0, D3D12_COMMAND_LIST_TYPE_DIRECT, 
+      frames_[frame_index_].lighting_pass_command_allocator.Get(), lighting_pass_.pipeline.Get(), 
+      IID_PPV_ARGS(&lighting_pass_command_list_)));
+  ThrowIfFailed(lighting_pass_command_list_->Close());
 }
 
 void App::InitFence() {
@@ -414,56 +425,67 @@ void App::Cleanup() {
 }
 
 void App::RenderFrame() {
-  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
-  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
-                                     geometry_pass_.pipeline.Get()));
-
-  command_list_->SetGraphicsRootSignature(geometry_pass_.root_signature.Get());
-
-  command_list_->RSSetViewports(1, &viewport_);
-  command_list_->RSSetScissorRects(1, &scissor_rect_);
-
   {
-    CD3DX12_RESOURCE_BARRIER barrier =
-        CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
-                                             D3D12_RESOURCE_STATE_PRESENT,
-                                             D3D12_RESOURCE_STATE_RENDER_TARGET);
-    command_list_->ResourceBarrier(1, &barrier);
+    ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
+    ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
+                                       geometry_pass_.pipeline.Get()));
+
+    command_list_->SetGraphicsRootSignature(geometry_pass_.root_signature.Get());
+
+    command_list_->RSSetViewports(1, &viewport_);
+    command_list_->RSSetScissorRects(1, &scissor_rect_);
+
+    {
+      CD3DX12_RESOURCE_BARRIER barrier =
+          CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
+                                               D3D12_RESOURCE_STATE_PRESENT,
+                                               D3D12_RESOURCE_STATE_RENDER_TARGET);
+      command_list_->ResourceBarrier(1, &barrier);
+    }
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(geometry_pass_base_rtv_, frame_index_, 
+                                             rtv_descriptor_size_);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle2(lighting_pass_base_rtv_, frame_index_, 
+                                              rtv_descriptor_size_);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle, rtv_handle2 };
+
+    command_list_->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle);
+
+    const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
+    command_list_->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
+    command_list_->ClearRenderTargetView(rtv_handle2, clear_color, 0, nullptr);
+
+    command_list_->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+
+    command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    command_list_->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
+
+    command_list_->DrawInstanced(3, 1, 0, 0);
+
+    {
+      CD3DX12_RESOURCE_BARRIER barrier =
+          CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
+                                               D3D12_RESOURCE_STATE_RENDER_TARGET,
+                                               D3D12_RESOURCE_STATE_PRESENT);
+      command_list_->ResourceBarrier(1, &barrier);
+    }
+
+    ThrowIfFailed(command_list_->Close());
   }
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(geometry_pass_base_rtv_, frame_index_, 
-                                           rtv_descriptor_size_);
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle2(lighting_pass_base_rtv_, frame_index_, 
-                                            rtv_descriptor_size_);
-  CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
-
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle, rtv_handle2 };
-
-  command_list_->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle);
-
-  const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
-  command_list_->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
-  command_list_->ClearRenderTargetView(rtv_handle2, clear_color, 0, nullptr);
-
-  command_list_->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-
-  command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-  command_list_->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
-
-  command_list_->DrawInstanced(3, 1, 0, 0);
-
   {
-    CD3DX12_RESOURCE_BARRIER barrier =
-        CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
-                                             D3D12_RESOURCE_STATE_RENDER_TARGET,
-                                             D3D12_RESOURCE_STATE_PRESENT);
-    command_list_->ResourceBarrier(1, &barrier);
+    ThrowIfFailed(frames_[frame_index_].lighting_pass_command_allocator->Reset());
+    ThrowIfFailed(lighting_pass_command_list_->Reset(
+        frames_[frame_index_].lighting_pass_command_allocator.Get(),
+        lighting_pass_.pipeline.Get()));
+
+    ThrowIfFailed(lighting_pass_command_list_->Close());
   }
 
-  ThrowIfFailed(command_list_->Close());
-
-  ID3D12CommandList* command_lists[] = { command_list_.Get() };
+  ID3D12CommandList* command_lists[] = { command_list_.Get(), lighting_pass_command_list_.Get() };
   command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
 
   ThrowIfFailed(swap_chain_->Present(1, 0));
