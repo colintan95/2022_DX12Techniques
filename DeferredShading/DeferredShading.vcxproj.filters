@@ -34,5 +34,11 @@
     <FxCompile Include="scene_ps.hlsl">
       <Filter>Source Files</Filter>
     </FxCompile>
+    <FxCompile Include="lighting_pass_vs.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
+    <FxCompile Include="lighting_pass_ps.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

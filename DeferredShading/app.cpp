@@ -22,7 +22,7 @@ App::App(HWND window_hwnd, int window_width, int window_height)
 
 void App::Initialize() {
   InitDeviceAndSwapChain();
-  InitPipeline();
+  InitPipelines();
   InitCommandAllocators();
   InitFence();
   InitResources();
@@ -74,7 +74,7 @@ void App::InitDeviceAndSwapChain() {
   ThrowIfFailed(swap_chain.As(&swap_chain_));
 }
 
-void App::InitPipeline() {
+void App::InitPipelines() {
   D3D12_FEATURE_DATA_ROOT_SIGNATURE feature_data;
   feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
 
@@ -83,18 +83,25 @@ void App::InitPipeline() {
     feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
   }
 
+  root_signature_version_ = feature_data.HighestVersion;
+
+  InitGeometryPassPipeline();
+
+  InitLightingPassPipeline();
+}
+
+void App::InitGeometryPassPipeline() {
   CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
   root_signature_desc.Init_1_1(0, nullptr, 0, nullptr,
                                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
   ComPtr<ID3DBlob> signature;
   ComPtr<ID3DBlob> error;
-  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, 
-                                                      feature_data.HighestVersion, &signature,
-                                                      &error));
+  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, root_signature_version_, 
+                                                      &signature, &error));
   ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
                                              signature->GetBufferSize(), 
-                                             IID_PPV_ARGS(&root_signature_)));
+                                             IID_PPV_ARGS(&geometry_pass_.root_signature)));
 
   std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"scene_vs.cso");
   D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
@@ -113,7 +120,7 @@ void App::InitPipeline() {
 
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
   pso_desc.InputLayout = input_layout_desc;
-  pso_desc.pRootSignature = root_signature_.Get();
+  pso_desc.pRootSignature = geometry_pass_.root_signature.Get();
   pso_desc.VS = vertex_shader;
   pso_desc.PS = pixel_shader;
   pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -126,7 +133,55 @@ void App::InitPipeline() {
   pso_desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
   pso_desc.SampleDesc.Count = 1;
 
-  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_state_)));
+  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, 
+                                                     IID_PPV_ARGS(&geometry_pass_.pipeline)));
+}
+
+void App::InitLightingPassPipeline() {
+  CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
+  root_signature_desc.Init_1_1(0, nullptr, 0, nullptr,
+                               D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+  ComPtr<ID3DBlob> signature;
+  ComPtr<ID3DBlob> error;
+  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, root_signature_version_, 
+                                                      &signature, &error));
+  ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
+                                             signature->GetBufferSize(), 
+                                             IID_PPV_ARGS(&lighting_pass_.root_signature)));
+
+  std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"lighting_pass_vs.cso");
+  D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
+
+  std::vector<uint8_t> pixel_shader_data = DX::ReadData(L"lighting_pass_ps.cso");
+  D3D12_SHADER_BYTECODE pixel_shader = { pixel_shader_data.data(), pixel_shader_data.size() };
+
+  D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
+     {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+  };
+
+  D3D12_INPUT_LAYOUT_DESC input_layout_desc{};
+  input_layout_desc.pInputElementDescs = input_element_descs;
+  input_layout_desc.NumElements = _countof(input_element_descs);
+
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
+  pso_desc.InputLayout = input_layout_desc;
+  pso_desc.pRootSignature = lighting_pass_.root_signature.Get();
+  pso_desc.VS = vertex_shader;
+  pso_desc.PS = pixel_shader;
+  pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  pso_desc.DepthStencilState.DepthEnable = false;
+  pso_desc.DepthStencilState.StencilEnable = false;
+  pso_desc.SampleMask = UINT_MAX;
+  pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  pso_desc.NumRenderTargets = 1;
+  pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+  pso_desc.SampleDesc.Count = 1;
+
+  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, 
+                                                     IID_PPV_ARGS(&lighting_pass_.pipeline)));
 }
 
 void App::InitCommandAllocators() {
@@ -137,7 +192,8 @@ void App::InitCommandAllocators() {
 
   ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                            frames_[frame_index_].command_allocator.Get(),
-                                           pipeline_state_.Get(), IID_PPV_ARGS(&command_list_)));
+                                           geometry_pass_.pipeline.Get(), 
+                                           IID_PPV_ARGS(&command_list_)));
   ThrowIfFailed(command_list_->Close());
 }
 
@@ -205,7 +261,7 @@ void App::InitResources() {
 
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
-                                     pipeline_state_.Get()));
+                                     geometry_pass_.pipeline.Get()));
 
   const float vertex_data[] = {
     0.f, 0.5f, 0.f,
@@ -268,9 +324,9 @@ void App::Cleanup() {
 void App::RenderFrame() {
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
-                                     pipeline_state_.Get()));
+                                     geometry_pass_.pipeline.Get()));
 
-  command_list_->SetGraphicsRootSignature(root_signature_.Get());
+  command_list_->SetGraphicsRootSignature(geometry_pass_.root_signature.Get());
 
   command_list_->RSSetViewports(1, &viewport_);
   command_list_->RSSetScissorRects(1, &scissor_rect_);

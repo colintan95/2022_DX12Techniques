@@ -21,14 +21,21 @@ public:
 
 private:
   void InitDeviceAndSwapChain();
-  void InitPipeline();
+
+  void InitPipelines();
+  void InitGeometryPassPipeline();
+  void InitLightingPassPipeline();
+
   void InitCommandAllocators();
   void InitFence();
+
   void InitResources();
 
   void MoveToNextFrame();
 
   void WaitForGpu();
+
+  D3D_ROOT_SIGNATURE_VERSION root_signature_version_;
 
   HWND window_hwnd_;
   int window_width_;
@@ -43,8 +50,13 @@ private:
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> command_queue_;
   Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
 
-  Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
-  Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_state_;
+  struct Pass {
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
+  };
+
+  Pass geometry_pass_;
+  Pass lighting_pass_;
 
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
 
