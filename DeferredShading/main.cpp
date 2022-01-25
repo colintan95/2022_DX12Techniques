@@ -1,5 +1,7 @@
 #include <windows.h>
 
+#include "app.h"
+
 namespace {
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -33,13 +35,21 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE prev_hinstance, LPSTR cmd_line
                            nullptr, hinstance, nullptr);
   ShowWindow(hwnd, cmd_show);
 
+  App app(hwnd, kWindowWidth, kWindowHeight);
+  
+  app.Initialize();
+
   MSG msg = {};
   while (msg.message != WM_QUIT) {
     if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
+
+    app.RenderFrame();
   }
+
+  app.Cleanup();
 
   return 0;
 }
