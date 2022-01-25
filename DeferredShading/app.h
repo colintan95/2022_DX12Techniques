@@ -59,7 +59,6 @@ private:
   Pass lighting_pass_;
 
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
-  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> lighting_pass_command_list_;
 
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
   UINT rtv_descriptor_size_ = 0;
@@ -87,8 +86,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> render_target;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> geometry_pass_render_target;
-
-    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> lighting_pass_command_allocator;
 
     UINT64 fence_value = 0;
   };

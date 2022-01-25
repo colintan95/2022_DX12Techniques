@@ -201,20 +201,8 @@ void App::InitCommandAllocators() {
 
   ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                            frames_[frame_index_].command_allocator.Get(),
-                                           geometry_pass_.pipeline.Get(), 
-                                           IID_PPV_ARGS(&command_list_)));
+                                           nullptr, IID_PPV_ARGS(&command_list_)));
   ThrowIfFailed(command_list_->Close());
-
-  for (int i = 0; i < kNumFrames; ++i) {
-    ThrowIfFailed(device_->CreateCommandAllocator(
-        D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frames_[i].lighting_pass_command_allocator)));
-  }
-
-  ThrowIfFailed(device_->CreateCommandList(
-      0, D3D12_COMMAND_LIST_TYPE_DIRECT, 
-      frames_[frame_index_].lighting_pass_command_allocator.Get(), lighting_pass_.pipeline.Get(), 
-      IID_PPV_ARGS(&lighting_pass_command_list_)));
-  ThrowIfFailed(lighting_pass_command_list_->Close());
 }
 
 void App::InitFence() {
@@ -363,8 +351,7 @@ void App::InitResources() {
   device_->CreateSampler(&sampler_desc, sampler_handle);
 
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
-  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
-                                     geometry_pass_.pipeline.Get()));
+  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
 
   const float vertex_data[] = {
     0.f, 0.5f, 0.f,
@@ -425,10 +412,11 @@ void App::Cleanup() {
 }
 
 void App::RenderFrame() {
+  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
+  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
+
   {
-    ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
-    ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
-                                       geometry_pass_.pipeline.Get()));
+    command_list_->SetPipelineState(geometry_pass_.pipeline.Get());
 
     command_list_->SetGraphicsRootSignature(geometry_pass_.root_signature.Get());
 
@@ -472,20 +460,11 @@ void App::RenderFrame() {
                                                D3D12_RESOURCE_STATE_PRESENT);
       command_list_->ResourceBarrier(1, &barrier);
     }
-
-    ThrowIfFailed(command_list_->Close());
   }
 
-  {
-    ThrowIfFailed(frames_[frame_index_].lighting_pass_command_allocator->Reset());
-    ThrowIfFailed(lighting_pass_command_list_->Reset(
-        frames_[frame_index_].lighting_pass_command_allocator.Get(),
-        lighting_pass_.pipeline.Get()));
+  ThrowIfFailed(command_list_->Close());
 
-    ThrowIfFailed(lighting_pass_command_list_->Close());
-  }
-
-  ID3D12CommandList* command_lists[] = { command_list_.Get(), lighting_pass_command_list_.Get() };
+  ID3D12CommandList* command_lists[] = { command_list_.Get() };
   command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
 
   ThrowIfFailed(swap_chain_->Present(1, 0));
