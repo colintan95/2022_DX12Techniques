@@ -74,9 +74,14 @@ private:
   UINT64 latest_fence_value_ = 0;
   HANDLE fence_event_;
 
+  CD3DX12_CPU_DESCRIPTOR_HANDLE geometry_pass_base_rtv_;
+  CD3DX12_CPU_DESCRIPTOR_HANDLE lighting_pass_base_rtv_;
+
   struct Frame {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
     Microsoft::WRL::ComPtr<ID3D12Resource> render_target;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> geometry_pass_render_target;
 
     UINT64 fence_value = 0;
   };

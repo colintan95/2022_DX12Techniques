@@ -128,8 +128,9 @@ void App::InitGeometryPassPipeline() {
   pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
   pso_desc.SampleMask = UINT_MAX;
   pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-  pso_desc.NumRenderTargets = 1;
+  pso_desc.NumRenderTargets = 2;
   pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+  pso_desc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
   pso_desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
   pso_desc.SampleDesc.Count = 1;
 
@@ -217,8 +218,26 @@ void App::InitFence() {
 }
 
 void App::InitResources() {
+  for (int i = 0; i < kNumFrames; ++i) {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC resource_desc =
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, window_width_, window_height_, 1,
+                                     0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+    D3D12_CLEAR_VALUE clear_value{};
+    clear_value.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    clear_value.Color[0] = 0.f;
+    clear_value.Color[1] = 0.f;
+    clear_value.Color[2] = 0.f;
+    clear_value.Color[3] = 1.f;
+
+    ThrowIfFailed(device_->CreateCommittedResource(
+        &heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc, D3D12_RESOURCE_STATE_RENDER_TARGET,
+        &clear_value, IID_PPV_ARGS(&frames_[i].geometry_pass_render_target)));
+  }
+
   D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
-  rtv_heap_desc.NumDescriptors = kNumFrames;
+  rtv_heap_desc.NumDescriptors = kNumFrames * 2;
   rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
   rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
   ThrowIfFailed(device_->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(&rtv_heap_)));
@@ -227,10 +246,25 @@ void App::InitResources() {
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(rtv_heap_->GetCPUDescriptorHandleForHeapStart());
 
+  geometry_pass_base_rtv_ = rtv_handle;
+
   for (int i = 0; i < kNumFrames; ++i) {
     ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].render_target)));
 
     device_->CreateRenderTargetView(frames_[i].render_target.Get(), nullptr, rtv_handle);
+
+    rtv_handle.Offset(1, rtv_descriptor_size_);
+  }
+
+  lighting_pass_base_rtv_ = rtv_handle;
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
+    rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+    device_->CreateRenderTargetView(frames_[i].geometry_pass_render_target.Get(), &rtv_desc, 
+                                    rtv_handle);
 
     rtv_handle.Offset(1, rtv_descriptor_size_);
   }
@@ -347,14 +381,19 @@ void App::RenderFrame() {
     command_list_->ResourceBarrier(1, &barrier);
   }
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(rtv_heap_->GetCPUDescriptorHandleForHeapStart(),
-                                           frame_index_, rtv_descriptor_size_);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(geometry_pass_base_rtv_, frame_index_, 
+                                           rtv_descriptor_size_);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle2(lighting_pass_base_rtv_, frame_index_, 
+                                            rtv_descriptor_size_);
   CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
 
-  command_list_->OMSetRenderTargets(1, &rtv_handle, false, &dsv_handle);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle, rtv_handle2 };
+
+  command_list_->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle);
 
   const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
   command_list_->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
+  command_list_->ClearRenderTargetView(rtv_handle2, clear_color, 0, nullptr);
 
   command_list_->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
