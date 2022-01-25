@@ -19,13 +19,15 @@ App::App(HWND window_hwnd, int window_width, int window_height)
     window_height_(window_height),
     viewport_(0.f, 0.f, static_cast<float>(window_width), static_cast<float>(window_height)),
     scissor_rect_(0, 0, window_width, window_height),
+    geometry_pass_(this),
     lighting_pass_(this) {}
 
 void App::Initialize() {
   InitDeviceAndSwapChain();
-  InitPipelines();
   InitCommandAllocators();
   InitFence();
+  InitPipelines();
+  InitDescriptorHeapsAndHandles();
   InitResources();
 }
 
@@ -75,6 +77,29 @@ void App::InitDeviceAndSwapChain() {
   ThrowIfFailed(swap_chain.As(&swap_chain_));
 }
 
+void App::InitCommandAllocators() {
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                                  IID_PPV_ARGS(&frames_[i].command_allocator)));
+  }
+
+  ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                           frames_[frame_index_].command_allocator.Get(),
+                                           nullptr, IID_PPV_ARGS(&command_list_)));
+  ThrowIfFailed(command_list_->Close());
+}
+
+void App::InitFence() {
+  ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
+                                     IID_PPV_ARGS(&fence_)));
+  ++latest_fence_value_;
+
+  fence_event_ = CreateEvent(nullptr, false, false, nullptr);
+  if (fence_event_ == nullptr) {
+    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+  }
+}
+
 void App::InitPipelines() {
   D3D12_FEATURE_DATA_ROOT_SIGNATURE feature_data;
   feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
@@ -86,23 +111,24 @@ void App::InitPipelines() {
 
   root_signature_version_ = feature_data.HighestVersion;
 
-  InitGeometryPassPipeline();
+  geometry_pass_.InitPipeline();
 
   lighting_pass_.InitPipeline();
 }
 
-void App::InitGeometryPassPipeline() {
+void App::GeometryPass::InitPipeline() {
   CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
   root_signature_desc.Init_1_1(0, nullptr, 0, nullptr,
                                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
   ComPtr<ID3DBlob> signature;
   ComPtr<ID3DBlob> error;
-  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, root_signature_version_, 
-                                                      &signature, &error));
-  ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
-                                             signature->GetBufferSize(), 
-                                             IID_PPV_ARGS(&geometry_pass_.root_signature)));
+  ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc, 
+                                                      app_->root_signature_version_,  &signature, 
+                                                      &error));
+  ThrowIfFailed(app_->device_->CreateRootSignature(0, signature->GetBufferPointer(),
+                                                   signature->GetBufferSize(), 
+                                                   IID_PPV_ARGS(&root_signature_)));
 
   std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"scene_vs.cso");
   D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
@@ -121,7 +147,7 @@ void App::InitGeometryPassPipeline() {
 
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
   pso_desc.InputLayout = input_layout_desc;
-  pso_desc.pRootSignature = geometry_pass_.root_signature.Get();
+  pso_desc.pRootSignature = root_signature_.Get();
   pso_desc.VS = vertex_shader;
   pso_desc.PS = pixel_shader;
   pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -135,8 +161,7 @@ void App::InitGeometryPassPipeline() {
   pso_desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
   pso_desc.SampleDesc.Count = 1;
 
-  ThrowIfFailed(device_->CreateGraphicsPipelineState(&pso_desc, 
-                                                     IID_PPV_ARGS(&geometry_pass_.pipeline)));
+  ThrowIfFailed(app_->device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_)));
 }
 
 void App::LightingPass::InitPipeline() {
@@ -169,7 +194,7 @@ void App::LightingPass::InitPipeline() {
 
   D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
      {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
   };
 
   D3D12_INPUT_LAYOUT_DESC input_layout_desc{};
@@ -191,52 +216,10 @@ void App::LightingPass::InitPipeline() {
   pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
   pso_desc.SampleDesc.Count = 1;
 
-  ThrowIfFailed(app_->device_->CreateGraphicsPipelineState(&pso_desc, 
-                                                           IID_PPV_ARGS(&pipeline_)));
+  ThrowIfFailed(app_->device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_)));
 }
 
-void App::InitCommandAllocators() {
-  for (int i = 0; i < kNumFrames; ++i) {
-    ThrowIfFailed(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                                  IID_PPV_ARGS(&frames_[i].command_allocator)));
-  }
-
-  ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                           frames_[frame_index_].command_allocator.Get(),
-                                           nullptr, IID_PPV_ARGS(&command_list_)));
-  ThrowIfFailed(command_list_->Close());
-}
-
-void App::InitFence() {
-  ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
-                                     IID_PPV_ARGS(&fence_)));
-  ++latest_fence_value_;
-
-  fence_event_ = CreateEvent(nullptr, false, false, nullptr);
-  if (fence_event_ == nullptr) {
-    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-  }
-}
-
-void App::InitResources() {
-  for (int i = 0; i < kNumFrames; ++i) {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC resource_desc =
-        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, window_width_, window_height_, 1,
-                                     1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-
-    D3D12_CLEAR_VALUE clear_value{};
-    clear_value.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    clear_value.Color[0] = 0.f;
-    clear_value.Color[1] = 0.f;
-    clear_value.Color[2] = 0.f;
-    clear_value.Color[3] = 1.f;
-
-    ThrowIfFailed(device_->CreateCommittedResource(
-        &heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc, D3D12_RESOURCE_STATE_RENDER_TARGET,
-        &clear_value, IID_PPV_ARGS(&frames_[i].geometry_pass_render_target)));
-  }
-
+void App::InitDescriptorHeapsAndHandles() {
   D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
   rtv_heap_desc.NumDescriptors = kNumFrames * 2;
   rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -246,29 +229,10 @@ void App::InitResources() {
   rtv_descriptor_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(rtv_heap_->GetCPUDescriptorHandleForHeapStart());
+  geometry_pass_.base_rtv_handle_ = rtv_handle;
 
-  geometry_pass_base_rtv_ = rtv_handle;
-
-  for (int i = 0; i < kNumFrames; ++i) {
-    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].render_target)));
-
-    device_->CreateRenderTargetView(frames_[i].render_target.Get(), nullptr, rtv_handle);
-
-    rtv_handle.Offset(1, rtv_descriptor_size_);
-  }
-
-  lighting_pass_base_rtv_ = rtv_handle;
-
-  for (int i = 0; i < kNumFrames; ++i) {
-    D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
-    rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-
-    device_->CreateRenderTargetView(frames_[i].geometry_pass_render_target.Get(), &rtv_desc, 
-                                    rtv_handle);
-
-    rtv_handle.Offset(1, rtv_descriptor_size_);
-  }
+  rtv_handle.Offset(3, rtv_descriptor_size_);
+  lighting_pass_.base_rtv_handle_ = rtv_handle;
 
   D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
   dsv_heap_desc.NumDescriptors = 1;
@@ -277,6 +241,52 @@ void App::InitResources() {
   ThrowIfFailed(device_->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(&dsv_heap_)));
 
   dsv_descriptor_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
+  D3D12_DESCRIPTOR_HEAP_DESC srv_heap_desc{};
+  srv_heap_desc.NumDescriptors = kNumFrames;
+  srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ThrowIfFailed(device_->CreateDescriptorHeap(&srv_heap_desc, IID_PPV_ARGS(&srv_heap_)));
+
+  srv_descriptor_size_ =
+       device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+  lighting_pass_.base_srv_cpu_handle_ = srv_heap_->GetCPUDescriptorHandleForHeapStart();
+  lighting_pass_.base_srv_gpu_handle_ = srv_heap_->GetGPUDescriptorHandleForHeapStart();
+
+  D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
+  sampler_heap_desc.NumDescriptors = 1;
+  sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+  sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
+
+  lighting_pass_.sampler_cpu_handle_ = sampler_heap_->GetCPUDescriptorHandleForHeapStart();
+  lighting_pass_.sampler_gpu_handle_ = sampler_heap_->GetGPUDescriptorHandleForHeapStart();
+}
+
+void App::InitResources() {
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
+  }
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC resource_desc =
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, window_width_, window_height_, 1, 
+                                     1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+    D3D12_CLEAR_VALUE clear_value{};
+    clear_value.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    clear_value.Color[0] = 0.f;
+    clear_value.Color[1] = 0.f;
+    clear_value.Color[2] = 0.f;
+    clear_value.Color[3] = 1.f;
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, 
+                                                   &resource_desc, 
+                                                   D3D12_RESOURCE_STATE_RENDER_TARGET, &clear_value, 
+                                                   IID_PPV_ARGS(&frames_[i].gbuffer)));
+  }
 
   {
     D3D12_CLEAR_VALUE clear_value{};
@@ -294,6 +304,7 @@ void App::InitResources() {
                                                    &clear_value, IID_PPV_ARGS(&depth_stencil_)));
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
+    geometry_pass_.dsv_handle_ = dsv_handle;
 
     D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
     depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
@@ -302,62 +313,14 @@ void App::InitResources() {
     device_->CreateDepthStencilView(depth_stencil_.Get(), &depth_stencil_desc, dsv_handle);
   }
 
-  D3D12_DESCRIPTOR_HEAP_DESC srv_heap_desc{};
-  srv_heap_desc.NumDescriptors = kNumFrames;
-  srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  ThrowIfFailed(device_->CreateDescriptorHeap(&srv_heap_desc, IID_PPV_ARGS(&srv_heap_)));
+  geometry_pass_.InitResources();
 
-  srv_descriptor_size_ =
-       device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-  CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(srv_heap_->GetCPUDescriptorHandleForHeapStart());
-
-  for (int i = 0; i < kNumFrames; ++i) {
-    // TODO: Fix the mip levels here.
-    D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
-    srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srv_desc.Texture2D.MipLevels = -1;
-
-    device_->CreateShaderResourceView(frames_[i].geometry_pass_render_target.Get(), &srv_desc, 
-                                      srv_handle);
-
-    srv_handle.Offset(1, srv_descriptor_size_);
-  }
-
-  D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
-  sampler_heap_desc.NumDescriptors = 1;
-  sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-  sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
-
-  lighting_pass_.InitDescriptors();
+  lighting_pass_.InitResources();
 
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
 
-  const float vertex_data[] = {
-    0.f, 0.5f, 0.f,
-    0.5f, -0.5f, 0.f,
-    -0.5f, -0.5f, 0.f
-  };
-
-  {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
-
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                    IID_PPV_ARGS(&vertex_buffer_)));
-  }
-
-  UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
-
-  vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
-  vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
-  vertex_buffer_view_.StrideInBytes = sizeof(float) * 3;
+  geometry_pass_.CreateBuffersAndUploadData();
 
   lighting_pass_.CreateBuffersAndUploadData();
 
@@ -367,6 +330,110 @@ void App::InitResources() {
 
   // TODO: Don't stall here.
   WaitForGpu();
+}
+
+void App::GeometryPass::InitResources() {
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = base_rtv_handle_;
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
+    rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+    app_->device_->CreateRenderTargetView(app_->frames_[i].gbuffer.Get(), &rtv_desc, rtv_handle);
+
+    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
+  }
+}
+
+void App::LightingPass::InitResources() {
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = base_rtv_handle_;
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    app_->device_->CreateRenderTargetView(app_->frames_[i].swap_chain_buffer.Get(), nullptr, 
+                                          rtv_handle);
+
+    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
+  }
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle = base_srv_cpu_handle_;
+  
+  for (int i = 0; i < kNumFrames; ++i) {
+    // TODO: Fix the mip levels here.
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+    srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Texture2D.MipLevels = -1;
+
+    app_->device_->CreateShaderResourceView(app_->frames_[i].gbuffer.Get(), &srv_desc, srv_handle);
+
+    srv_handle.Offset(1, app_->srv_descriptor_size_);
+  }
+
+  D3D12_SAMPLER_DESC sampler_desc{};
+  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+  sampler_desc.MinLOD = 0;
+  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
+  sampler_desc.MipLODBias = 0.0f;
+  sampler_desc.MaxAnisotropy = 1;
+  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+  sampler_desc.BorderColor[0] = 0;
+  sampler_desc.BorderColor[1] = 0;
+  sampler_desc.BorderColor[2] = 0;
+  sampler_desc.BorderColor[3] = 0;
+     
+  app_->device_->CreateSampler(&sampler_desc, sampler_cpu_handle_);
+}
+
+void App::GeometryPass::CreateBuffersAndUploadData() {
+  const float vertex_data[] = {
+    0.f, 0.5f, 0.f,
+    0.5f, -0.5f, 0.f,
+    -0.5f, -0.5f, 0.f
+  };
+
+  CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+  CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
+
+  ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, 
+                                                       &buffer_desc, D3D12_RESOURCE_STATE_COPY_DEST, 
+                                                       nullptr, IID_PPV_ARGS(&vertex_buffer_)));
+
+  app_->UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
+
+  vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
+  vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
+  vertex_buffer_view_.StrideInBytes = sizeof(float) * 3;
+}
+
+void App::LightingPass::CreateBuffersAndUploadData() {
+  // (x, y) - screen coords, (u,v) - texcoords.
+  const float vertex_data[] = {
+    1.f, -1.f, 1.f, 1.f,
+    -1.f, -1.f, 0.f, 1.f,
+    1.f, 1.f, 1.f, 0.f,
+    -1.f, 1.f, 0.f, 0.f
+  };
+
+  {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
+
+    ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, 
+                                                         &buffer_desc, 
+                                                         D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                         IID_PPV_ARGS(&vertex_buffer_)));
+  }
+
+  app_->UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
+
+  vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
+  vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
+  vertex_buffer_view_.StrideInBytes = sizeof(float) * 4;
 }
 
 void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {
@@ -396,53 +463,6 @@ void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource*
   upload_buffers_.push_back(upload_buffer);
 }
 
-void App::LightingPass::InitDescriptors() {
-  sampler_handle_ = app_->sampler_heap_->GetCPUDescriptorHandleForHeapStart();
-
-  D3D12_SAMPLER_DESC sampler_desc{};
-  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.MinLOD = 0;
-  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
-  sampler_desc.MipLODBias = 0.0f;
-  sampler_desc.MaxAnisotropy = 1;
-  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-  sampler_desc.BorderColor[0] = 0;
-  sampler_desc.BorderColor[1] = 0;
-  sampler_desc.BorderColor[2] = 0;
-  sampler_desc.BorderColor[3] = 0;
-     
-  app_->device_->CreateSampler(&sampler_desc, sampler_handle_);
-}
-
-void App::LightingPass::CreateBuffersAndUploadData() {
-  // (x, y) - screen coords, (u,v) - texcoords.
-  const float vertex_data[] = {
-    1.f, 1.f, 1.f, 0.f,
-    1.f, -1.f, 1.f, 1.f,
-    -1.f, -1.f, 0.f, 1.f,
-    -1.f, 1.f, 0.f, 0.f
-  };
-
-  {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
-
-    ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, 
-                                                         &buffer_desc, 
-                                                         D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                         IID_PPV_ARGS(&vertex_buffer_)));
-  }
-
-  app_->UploadDataToBuffer(vertex_data, sizeof(vertex_data), vertex_buffer_.Get());
-
-  vertex_buffer_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
-  vertex_buffer_view_.SizeInBytes = sizeof(vertex_data);
-  vertex_buffer_view_.StrideInBytes = sizeof(float) * 4;
-}
-
 void App::Cleanup() {
   WaitForGpu();
 
@@ -455,50 +475,21 @@ void App::RenderFrame() {
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
 
   {
-    command_list_->SetPipelineState(geometry_pass_.pipeline.Get());
+    CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        frames_[frame_index_].swap_chain_buffer.Get(), D3D12_RESOURCE_STATE_PRESENT,
+        D3D12_RESOURCE_STATE_RENDER_TARGET);
+    command_list_->ResourceBarrier(1, &barrier);
+  }
 
-    command_list_->SetGraphicsRootSignature(geometry_pass_.root_signature.Get());
+  geometry_pass_.RenderFrame(command_list_.Get());
 
-    command_list_->RSSetViewports(1, &viewport_);
-    command_list_->RSSetScissorRects(1, &scissor_rect_);
+  lighting_pass_.RenderFrame(command_list_.Get());
 
-    {
-      CD3DX12_RESOURCE_BARRIER barrier =
-          CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
-                                               D3D12_RESOURCE_STATE_PRESENT,
-                                               D3D12_RESOURCE_STATE_RENDER_TARGET);
-      command_list_->ResourceBarrier(1, &barrier);
-    }
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(geometry_pass_base_rtv_, frame_index_, 
-                                             rtv_descriptor_size_);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle2(lighting_pass_base_rtv_, frame_index_, 
-                                              rtv_descriptor_size_);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle, rtv_handle2 };
-
-    command_list_->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle);
-
-    const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
-    command_list_->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
-    command_list_->ClearRenderTargetView(rtv_handle2, clear_color, 0, nullptr);
-
-    command_list_->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-
-    command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    command_list_->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
-
-    command_list_->DrawInstanced(3, 1, 0, 0);
-
-    {
-      CD3DX12_RESOURCE_BARRIER barrier =
-          CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
-                                               D3D12_RESOURCE_STATE_RENDER_TARGET,
-                                               D3D12_RESOURCE_STATE_PRESENT);
-      command_list_->ResourceBarrier(1, &barrier);
-    }
+  {
+    CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        frames_[frame_index_].swap_chain_buffer.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    command_list_->ResourceBarrier(1, &barrier);
   }
 
   ThrowIfFailed(command_list_->Close());
@@ -509,6 +500,82 @@ void App::RenderFrame() {
   ThrowIfFailed(swap_chain_->Present(1, 0));
 
   MoveToNextFrame();
+}
+
+void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
+
+  command_list->SetPipelineState(pipeline_.Get());
+
+  command_list->SetGraphicsRootSignature(root_signature_.Get());
+
+  command_list->RSSetViewports(1, &app_->viewport_);
+  command_list->RSSetScissorRects(1, &app_->scissor_rect_);
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(base_rtv_handle_, app_->frame_index_, 
+                                           app_->rtv_descriptor_size_);
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle };
+
+  command_list->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle_);
+
+  const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
+  command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
+
+  command_list->ClearDepthStencilView(dsv_handle_, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+
+  command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+  command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
+
+  command_list->DrawInstanced(3, 1, 0, 0);
+}
+
+void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
+  {
+    CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].gbuffer.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    command_list->ResourceBarrier(1, &barrier);
+  }
+
+  command_list->SetPipelineState(pipeline_.Get());
+
+  command_list->SetGraphicsRootSignature(root_signature_.Get());
+
+  ID3D12DescriptorHeap* heaps[] = { app_->srv_heap_.Get(), app_->sampler_heap_.Get() };
+  command_list->SetDescriptorHeaps(_countof(heaps), heaps);
+
+  CD3DX12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle(base_srv_gpu_handle_, app_->frame_index_, 
+                                               app_->srv_descriptor_size_);
+
+  command_list->SetGraphicsRootDescriptorTable(0, srv_gpu_handle);
+  command_list->SetGraphicsRootDescriptorTable(1, sampler_gpu_handle_);
+
+  command_list->RSSetViewports(1, &app_->viewport_);
+  command_list->RSSetScissorRects(1, &app_->scissor_rect_);
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(base_rtv_handle_, app_->frame_index_, 
+                                           app_->rtv_descriptor_size_);
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle };
+
+  command_list->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, nullptr);
+
+  const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
+  command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);;
+
+  command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+  command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
+
+  command_list->DrawInstanced(4, 1, 0, 0);
+
+  {
+    CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].gbuffer.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    command_list->ResourceBarrier(1, &barrier);
+  }
 }
 
 void App::MoveToNextFrame() {

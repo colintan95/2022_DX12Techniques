@@ -24,12 +24,12 @@ public:
 private:
   void InitDeviceAndSwapChain();
 
-  void InitPipelines();
-  void InitGeometryPassPipeline();
-
   void InitCommandAllocators();
   void InitFence();
 
+  void InitPipelines();
+
+  void InitDescriptorHeapsAndHandles();
   void InitResources();
 
   void UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer);
@@ -58,15 +58,19 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
   };
 
-  class LightingPass {
+  class GeometryPass {
   public:
-    LightingPass(App* app) : app_(app) {}
+    GeometryPass(App* app) : app_(app) {}
 
     void InitPipeline();
-    void InitDescriptors();
+    void InitResources();
     void CreateBuffersAndUploadData();
 
+    void RenderFrame(ID3D12GraphicsCommandList* command_list);
+
   private:
+    friend class App;
+
     App* app_;
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
@@ -75,15 +79,49 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
     D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle_;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
   };
 
-  Pass geometry_pass_;
+  class LightingPass {
+  public:
+    LightingPass(App* app) : app_(app) {}
+
+    void InitPipeline();
+    void InitResources();
+    void CreateBuffersAndUploadData();
+
+    void RenderFrame(ID3D12GraphicsCommandList* command_list);
+
+  private:
+    friend class App;
+
+    App* app_;
+
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
+    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
+    
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE base_srv_gpu_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
+  };
+
+  GeometryPass geometry_pass_;
 
   LightingPass lighting_pass_;
 
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
+
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
+  UINT64 latest_fence_value_ = 0;
+  HANDLE fence_event_;
 
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
   UINT rtv_descriptor_size_ = 0;
@@ -98,21 +136,11 @@ private:
 
   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> upload_buffers_;
 
-  Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
-  D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
-
-  Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-  UINT64 latest_fence_value_ = 0;
-  HANDLE fence_event_;
-
-  CD3DX12_CPU_DESCRIPTOR_HANDLE geometry_pass_base_rtv_;
-  CD3DX12_CPU_DESCRIPTOR_HANDLE lighting_pass_base_rtv_;
-
   struct Frame {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
-    Microsoft::WRL::ComPtr<ID3D12Resource> render_target;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> geometry_pass_render_target;
+    Microsoft::WRL::ComPtr<ID3D12Resource> swap_chain_buffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> gbuffer;
 
     UINT64 fence_value = 0;
   };
