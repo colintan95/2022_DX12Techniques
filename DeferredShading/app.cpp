@@ -24,8 +24,8 @@ void App::Initialize() {
   InitDeviceAndSwapChain();
   InitPipeline();
   InitCommandAllocators();
+  InitFence();
   InitResources();
-  InitFences();
 }
 
 void App::InitDeviceAndSwapChain() {
@@ -33,9 +33,13 @@ void App::InitDeviceAndSwapChain() {
 
 #if defined(_DEBUG)
   ComPtr<ID3D12Debug> debug_controller;
+  ComPtr<ID3D12Debug1> debug_controller1;
 
   if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)))) {
     debug_controller->EnableDebugLayer();
+
+    debug_controller.As(&debug_controller1);
+    debug_controller1->SetEnableGPUBasedValidation(true);
 
     factory_flags |= DXGI_CREATE_FACTORY_DEBUG;
   }
@@ -134,6 +138,18 @@ void App::InitCommandAllocators() {
   ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                            frames_[frame_index_].command_allocator.Get(),
                                            pipeline_state_.Get(), IID_PPV_ARGS(&command_list_)));
+  ThrowIfFailed(command_list_->Close());
+}
+
+void App::InitFence() {
+  ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
+                                     IID_PPV_ARGS(&fence_)));
+  ++latest_fence_value_;
+
+  fence_event_ = CreateEvent(nullptr, false, false, nullptr);
+  if (fence_event_ == nullptr) {
+    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+  }
 }
 
 void App::InitResources() {
@@ -187,6 +203,10 @@ void App::InitResources() {
     device_->CreateDepthStencilView(depth_stencil_.Get(), &depth_stencil_desc, dsv_handle);
   }
 
+  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
+  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
+                                     pipeline_state_.Get()));
+
   const float vertex_data[] = {
     0.f, 0.5f, 0.f,
     0.5f, -0.5f, 0.f,
@@ -202,11 +222,12 @@ void App::InitResources() {
                                                     IID_PPV_ARGS(&vertex_buffer_)));
   }
 
+  Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_upload;
+
   {
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex_data));
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_upload;
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc,
                                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
                                                    IID_PPV_ARGS(&vertex_buffer_upload)));
@@ -232,17 +253,9 @@ void App::InitResources() {
   ThrowIfFailed(command_list_->Close());
   ID3D12CommandList* command_lists[] = { command_list_.Get() };
   command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
-}
 
-void App::InitFences() {
-  ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
-                                     IID_PPV_ARGS(&fence_)));
-  ++latest_fence_value_;
-
-  fence_event_ = CreateEvent(nullptr, false, false, nullptr);
-  if (fence_event_ == nullptr) {
-    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-  }
+  // TODO: Don't stall here.
+  WaitForGpu();
 }
 
 void App::Cleanup() {
@@ -253,7 +266,70 @@ void App::Cleanup() {
 }
 
 void App::RenderFrame() {
+  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
+  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(),
+                                     pipeline_state_.Get()));
 
+  command_list_->SetGraphicsRootSignature(root_signature_.Get());
+
+  command_list_->RSSetViewports(1, &viewport_);
+  command_list_->RSSetScissorRects(1, &scissor_rect_);
+
+  {
+    CD3DX12_RESOURCE_BARRIER barrier =
+        CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
+                                             D3D12_RESOURCE_STATE_PRESENT,
+                                             D3D12_RESOURCE_STATE_RENDER_TARGET);
+    command_list_->ResourceBarrier(1, &barrier);
+  }
+
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(rtv_heap_->GetCPUDescriptorHandleForHeapStart(),
+                                           frame_index_, rtv_descriptor_size_);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
+
+  command_list_->OMSetRenderTargets(1, &rtv_handle, false, &dsv_handle);
+
+  const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
+  command_list_->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
+
+  command_list_->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+
+  command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+  command_list_->IASetVertexBuffers(0, 1, &vertex_buffer_view_);
+
+  command_list_->DrawInstanced(3, 1, 0, 0);
+
+  {
+    CD3DX12_RESOURCE_BARRIER barrier =
+        CD3DX12_RESOURCE_BARRIER::Transition(frames_[frame_index_].render_target.Get(),
+                                             D3D12_RESOURCE_STATE_RENDER_TARGET,
+                                             D3D12_RESOURCE_STATE_PRESENT);
+    command_list_->ResourceBarrier(1, &barrier);
+  }
+
+  ThrowIfFailed(command_list_->Close());
+
+  ID3D12CommandList* command_lists[] = { command_list_.Get() };
+  command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
+
+  ThrowIfFailed(swap_chain_->Present(1, 0));
+
+  MoveToNextFrame();
+}
+
+void App::MoveToNextFrame() {
+  ThrowIfFailed(command_queue_->Signal(fence_.Get(), latest_fence_value_));
+  frames_[frame_index_].fence_value = latest_fence_value_;
+
+  ++latest_fence_value_;
+
+  frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
+
+  if (fence_->GetCompletedValue() < frames_[frame_index_].fence_value) {
+    ThrowIfFailed(fence_->SetEventOnCompletion(frames_[frame_index_].fence_value, fence_event_));
+    WaitForSingleObjectEx(fence_event_, INFINITE, false);
+  }
 }
 
 void App::WaitForGpu() {

@@ -23,8 +23,10 @@ private:
   void InitDeviceAndSwapChain();
   void InitPipeline();
   void InitCommandAllocators();
+  void InitFence();
   void InitResources();
-  void InitFences();
+
+  void MoveToNextFrame();
 
   void WaitForGpu();
 
@@ -63,6 +65,8 @@ private:
   struct Frame {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
     Microsoft::WRL::ComPtr<ID3D12Resource> render_target;
+
+    UINT64 fence_value = 0;
   };
 
   Frame frames_[kNumFrames];
