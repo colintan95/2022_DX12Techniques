@@ -36,7 +36,7 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE prev_hinstance, LPSTR cmd_line
   ShowWindow(hwnd, cmd_show);
 
   App app(hwnd, kWindowWidth, kWindowHeight);
-  
+
   app.Initialize();
 
   MSG msg = {};

@@ -3,7 +3,7 @@ struct PSInput {
   float2 texcoord : TEXCOORD;
 };
 
-PSInput main(float2 screen_pos : POSITION, float2 texcoord : TEXCOORD) { 
+PSInput main(float2 screen_pos : POSITION, float2 texcoord : TEXCOORD) {
   PSInput result;
 
   result.position = float4(screen_pos, 0.f, 1.f);

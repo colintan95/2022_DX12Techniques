@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "d3dx12.h"
+#include "DirectXMath.h"
 
 // TODO: See if this can be removed. Currently needed so that "Model.h" doesn't error out.
 #include <stdexcept>
@@ -70,8 +71,8 @@ private:
     GeometryPass(App* app) : app_(app) {}
 
     void InitPipeline();
-    void InitResources();
     void CreateBuffersAndUploadData();
+    void InitResources();
 
     void RenderFrame(ID3D12GraphicsCommandList* command_list);
 
@@ -83,22 +84,26 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
-    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
-
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
 
     struct DrawCallArgs {
       D3D12_PRIMITIVE_TOPOLOGY primitive_type;
       D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
       D3D12_INDEX_BUFFER_VIEW index_buffer_view;
+
       uint32_t index_count;
       uint32_t start_index;
       int32_t vertex_offset;
     };
 
     std::vector<DrawCallArgs> draw_call_args_;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> scene_constant_buffer_;
+    UINT scene_constant_buffer_size_ = 0;
   };
 
   class LightingPass {
@@ -106,8 +111,8 @@ private:
     LightingPass(App* app) : app_(app) {}
 
     void InitPipeline();
-    void InitResources();
     void CreateBuffersAndUploadData();
+    void InitResources();
 
     void RenderFrame(ID3D12GraphicsCommandList* command_list);
 
@@ -121,7 +126,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
     D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
-    
+
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
@@ -145,8 +150,8 @@ private:
   UINT rtv_descriptor_size_ = 0;
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsv_heap_;
   UINT dsv_descriptor_size_ = 0;
-  Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srv_heap_;
-  UINT srv_descriptor_size_ = 0;
+  Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> cbv_srv_heap_;
+  UINT cbv_srv_descriptor_size_ = 0;
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> sampler_heap_;
   UINT sampler_descriptor_size_ = 0;
 
@@ -168,7 +173,7 @@ private:
   std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
   std::unique_ptr<DirectX::Model> model_;
 
-  Microsoft::WRL::ComPtr<ID3D12Resource> mvp_mat_buffer_;
+  DirectX::XMFLOAT4X4 world_view_proj_mat_;
 };
 
 #endif  // APP_H_
