@@ -5,9 +5,16 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include <memory>
 #include <vector>
 
 #include "d3dx12.h"
+
+// TODO: See if this can be removed. Currently needed so that "Model.h" doesn't error out.
+#include <stdexcept>
+
+#include "GraphicsMemory.h"
+#include "Model.h"
 
 constexpr int kNumFrames = 3;
 
@@ -81,6 +88,17 @@ private:
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
+
+    struct DrawCallArgs {
+      D3D12_PRIMITIVE_TOPOLOGY primitive_type;
+      D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
+      D3D12_INDEX_BUFFER_VIEW index_buffer_view;
+      uint32_t index_count;
+      uint32_t start_index;
+      int32_t vertex_offset;
+    };
+
+    std::vector<DrawCallArgs> draw_call_args_;
   };
 
   class LightingPass {
@@ -146,6 +164,11 @@ private:
   };
 
   Frame frames_[kNumFrames];
+
+  std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
+  std::unique_ptr<DirectX::Model> model_;
+
+  Microsoft::WRL::ComPtr<ID3D12Resource> mvp_mat_buffer_;
 };
 
 #endif  // APP_H_

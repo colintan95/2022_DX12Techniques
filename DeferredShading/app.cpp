@@ -7,8 +7,11 @@
 #include <vector>
 
 #include "d3dx12.h"
-#include "dx_utils.h"
+
 #include "ReadData.h"
+#include "ResourceUploadBatch.h"
+
+#include "dx_utils.h"
 
 using Microsoft::WRL::ComPtr;
 using DX::ThrowIfFailed;
@@ -130,10 +133,10 @@ void App::GeometryPass::InitPipeline() {
                                                    signature->GetBufferSize(), 
                                                    IID_PPV_ARGS(&root_signature_)));
 
-  std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"scene_vs.cso");
+  std::vector<uint8_t> vertex_shader_data = DX::ReadData(L"geometry_pass_vs.cso");
   D3D12_SHADER_BYTECODE vertex_shader = { vertex_shader_data.data(), vertex_shader_data.size() };
 
-  std::vector<uint8_t> pixel_shader_data = DX::ReadData(L"scene_ps.cso");
+  std::vector<uint8_t> pixel_shader_data = DX::ReadData(L"geometry_pass_ps.cso");
   D3D12_SHADER_BYTECODE pixel_shader = { pixel_shader_data.data(), pixel_shader_data.size() };
 
   D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
@@ -313,6 +316,9 @@ void App::InitResources() {
     device_->CreateDepthStencilView(depth_stencil_.Get(), &depth_stencil_desc, dsv_handle);
   }
 
+  graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
+  model_ = DirectX::Model::CreateFromSDKMESH(device_.Get(), L"cornell_box.sdkmesh");
+
   geometry_pass_.InitResources();
 
   lighting_pass_.InitResources();
@@ -343,6 +349,37 @@ void App::GeometryPass::InitResources() {
     app_->device_->CreateRenderTargetView(app_->frames_[i].gbuffer.Get(), &rtv_desc, rtv_handle);
 
     rtv_handle.Offset(1, app_->rtv_descriptor_size_);
+  }
+
+  DirectX::ResourceUploadBatch resource_upload(app_->device_.Get());
+  resource_upload.Begin();
+  app_->model_->LoadStaticBuffers(app_->device_.Get(), resource_upload);
+
+  std::future<void> resource_upload_done = resource_upload.End(app_->command_queue_.Get());
+  resource_upload_done.wait();
+
+  for (auto& mesh : app_->model_->meshes) {
+    for (auto& mesh_part : mesh->opaqueMeshParts) {
+      DrawCallArgs args{};
+
+      args.primitive_type = mesh_part->primitiveType;
+
+      args.vertex_buffer_view.BufferLocation = 
+          mesh_part->staticVertexBuffer->GetGPUVirtualAddress();
+      args.vertex_buffer_view.SizeInBytes = mesh_part->vertexBufferSize;
+      args.vertex_buffer_view.StrideInBytes = mesh_part->vertexStride;
+
+      args.index_buffer_view.BufferLocation =
+          mesh_part->staticIndexBuffer->GetGPUVirtualAddress();
+      args.index_buffer_view.SizeInBytes = mesh_part->indexBufferSize;
+      args.index_buffer_view.Format = mesh_part->indexFormat;
+
+      args.index_count = mesh_part->indexCount;
+      args.start_index = mesh_part->startIndex;
+      args.vertex_offset = mesh_part->vertexOffset;
+
+      draw_call_args_.push_back(args);
+    }
   }
 }
 
