@@ -87,8 +87,10 @@ private:
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE pos_gbuffer_base_rtv_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_cbv_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE base_cbv_gpu_handle_;
 
     struct DrawCallArgs {
       D3D12_PRIMITIVE_TOPOLOGY primitive_type;
@@ -98,12 +100,17 @@ private:
       uint32_t index_count;
       uint32_t start_index;
       int32_t vertex_offset;
+
+      uint32_t material_index;
     };
 
     std::vector<DrawCallArgs> draw_call_args_;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> scene_constant_buffer_;
     UINT scene_constant_buffer_size_ = 0;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
+    UINT materials_buffer_size_ = 0;
   };
 
   class LightingPass {
@@ -165,6 +172,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> swap_chain_buffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> gbuffer;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource> pos_gbuffer;
+
     UINT64 fence_value = 0;
   };
 
@@ -173,7 +182,15 @@ private:
   std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
   std::unique_ptr<DirectX::Model> model_;
 
+  DirectX::XMFLOAT4X4 world_view_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
+
+  struct Material {
+    DirectX::XMFLOAT4 ambient_color;
+    DirectX::XMFLOAT4 diffuse_color;
+  };
+
+  std::vector<Material> materials_;
 };
 
 #endif  // APP_H_
