@@ -170,9 +170,10 @@ void App::GeometryPass::InitPipeline() {
   pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
   pso_desc.SampleMask = UINT_MAX;
   pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-  pso_desc.NumRenderTargets = 2;
+  pso_desc.NumRenderTargets = 3;
   pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
   pso_desc.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+  pso_desc.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;
   pso_desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
   pso_desc.SampleDesc.Count = 1;
 
@@ -181,7 +182,7 @@ void App::GeometryPass::InitPipeline() {
 
 void App::LightingPass::InitPipeline() {
   CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
-  ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
+  ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0);
   ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
 
   CD3DX12_ROOT_PARAMETER1 root_params[2] = {};
@@ -236,7 +237,7 @@ void App::LightingPass::InitPipeline() {
 
 void App::InitDescriptorHeapsAndHandles() {
   D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
-  rtv_heap_desc.NumDescriptors = kNumFrames * 3;
+  rtv_heap_desc.NumDescriptors = kNumFrames * 4;
   rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
   rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
   ThrowIfFailed(device_->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(&rtv_heap_)));
@@ -246,10 +247,7 @@ void App::InitDescriptorHeapsAndHandles() {
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(rtv_heap_->GetCPUDescriptorHandleForHeapStart());
   geometry_pass_.base_rtv_handle_ = rtv_handle;
 
-  rtv_handle.Offset(3, rtv_descriptor_size_);
-  geometry_pass_.pos_gbuffer_base_rtv_handle_ = rtv_handle;
-
-  rtv_handle.Offset(3, rtv_descriptor_size_);
+  rtv_handle.Offset(9, rtv_descriptor_size_);
   lighting_pass_.base_rtv_handle_ = rtv_handle;
 
   D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
@@ -261,7 +259,7 @@ void App::InitDescriptorHeapsAndHandles() {
   dsv_descriptor_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
   D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_heap_desc{};
-  cbv_srv_heap_desc.NumDescriptors = kNumFrames * 2 + 2;
+  cbv_srv_heap_desc.NumDescriptors = kNumFrames * 3 + 2;
   cbv_srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   cbv_srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   ThrowIfFailed(device_->CreateDescriptorHeap(&cbv_srv_heap_desc, IID_PPV_ARGS(&cbv_srv_heap_)));
@@ -272,14 +270,14 @@ void App::InitDescriptorHeapsAndHandles() {
   CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle(cbv_srv_heap_->GetCPUDescriptorHandleForHeapStart());
   CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle(cbv_srv_heap_->GetGPUDescriptorHandleForHeapStart());
 
-  lighting_pass_.base_srv_cpu_handle_ = cbv_cpu_handle;
-  lighting_pass_.base_srv_gpu_handle_ = cbv_gpu_handle;
-
-  cbv_cpu_handle.Offset(kNumFrames * 2, cbv_srv_descriptor_size_);
-  cbv_gpu_handle.Offset(kNumFrames * 2, cbv_srv_descriptor_size_);
-
   geometry_pass_.base_cbv_cpu_handle_ = cbv_cpu_handle;
   geometry_pass_.base_cbv_gpu_handle_ = cbv_gpu_handle;
+
+  cbv_cpu_handle.Offset(2, cbv_srv_descriptor_size_);
+  cbv_gpu_handle.Offset(2, cbv_srv_descriptor_size_);
+
+  lighting_pass_.base_srv_cpu_handle_ = cbv_cpu_handle;
+  lighting_pass_.base_srv_gpu_handle_ = cbv_gpu_handle;
 
   D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
   sampler_heap_desc.NumDescriptors = 1;
@@ -313,6 +311,11 @@ void App::InitResources() {
                                                    &resource_desc,
                                                    D3D12_RESOURCE_STATE_RENDER_TARGET, &clear_color,
                                                    IID_PPV_ARGS(&frames_[i].gbuffer)));
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                   &resource_desc,
+                                                   D3D12_RESOURCE_STATE_RENDER_TARGET, &clear_color,
+                                                   IID_PPV_ARGS(&frames_[i].diffuse_gbuffer)));
   }
 
   D3D12_CLEAR_VALUE clear_pos{};
@@ -491,33 +494,40 @@ void App::LightingPass::CreateBuffersAndUploadData() {
 }
 
 void App::GeometryPass::InitResources() {
-  {
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = base_rtv_handle_;
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = base_rtv_handle_;
 
-    for (int i = 0; i < kNumFrames; ++i) {
+  for (int i = 0; i < kNumFrames; ++i) {
+    {
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
       rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
       rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
       app_->device_->CreateRenderTargetView(app_->frames_[i].gbuffer.Get(), &rtv_desc, rtv_handle);
-
-      rtv_handle.Offset(1, app_->rtv_descriptor_size_);
     }
-  }
 
-  {
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = pos_gbuffer_base_rtv_handle_;
+    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
 
-    for (int i = 0; i < kNumFrames; ++i) {
+    {
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
       rtv_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
       rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
       app_->device_->CreateRenderTargetView(app_->frames_[i].pos_gbuffer.Get(), &rtv_desc,
                                             rtv_handle);
-
-      rtv_handle.Offset(1, app_->rtv_descriptor_size_);
     }
+
+    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
+
+    {
+      D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
+      rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+      app_->device_->CreateRenderTargetView(app_->frames_[i].diffuse_gbuffer.Get(), &rtv_desc,
+                                            rtv_handle);
+    }
+
+    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
   }
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle = base_cbv_cpu_handle_;
@@ -607,6 +617,21 @@ void App::LightingPass::InitResources() {
     }
 
     srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
+
+    {
+      // TODO: Fix the mip levels here.
+      D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+      srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+      srv_desc.Texture2D.MipLevels = -1;
+
+      app_->device_->CreateShaderResourceView(app_->frames_[i].diffuse_gbuffer.Get(), &srv_desc,
+                                              srv_handle);
+    }
+
+    srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
+
   }
 
   D3D12_SAMPLER_DESC sampler_desc{};
@@ -713,12 +738,18 @@ void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   command_list->RSSetViewports(1, &app_->viewport_);
   command_list->RSSetScissorRects(1, &app_->scissor_rect_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE color_rtv_handle(base_rtv_handle_, app_->frame_index_,
+  CD3DX12_CPU_DESCRIPTOR_HANDLE color_rtv_handle(base_rtv_handle_, app_->frame_index_ * 3,
                                                  app_->rtv_descriptor_size_);
-  CD3DX12_CPU_DESCRIPTOR_HANDLE pos_rtv_handle(pos_gbuffer_base_rtv_handle_, app_->frame_index_,
+  CD3DX12_CPU_DESCRIPTOR_HANDLE pos_rtv_handle(base_rtv_handle_, app_->frame_index_ * 3 + 1,
                                                app_->rtv_descriptor_size_);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE diffuse_rtv_handle(base_rtv_handle_, app_->frame_index_ * 3 + 2,
+                                                   app_->rtv_descriptor_size_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { color_rtv_handle, pos_rtv_handle };
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = {
+    color_rtv_handle,
+    pos_rtv_handle,
+    diffuse_rtv_handle
+  };
 
   command_list->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, &dsv_handle_);
 
@@ -745,13 +776,16 @@ void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
 void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   {
-    CD3DX12_RESOURCE_BARRIER barriers[2] = {};
+    CD3DX12_RESOURCE_BARRIER barriers[3] = {};
 
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].gbuffer.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].pos_gbuffer.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].diffuse_gbuffer.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
     command_list->ResourceBarrier(_countof(barriers), barriers);
@@ -764,7 +798,7 @@ void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   ID3D12DescriptorHeap* heaps[] = { app_->cbv_srv_heap_.Get(), app_->sampler_heap_.Get() };
   command_list->SetDescriptorHeaps(_countof(heaps), heaps);
 
-  CD3DX12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle(base_srv_gpu_handle_, app_->frame_index_ * 2,
+  CD3DX12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle(base_srv_gpu_handle_, app_->frame_index_ * 3,
                                                app_->cbv_srv_descriptor_size_);
 
   command_list->SetGraphicsRootDescriptorTable(0, srv_gpu_handle);
@@ -774,7 +808,7 @@ void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   command_list->RSSetScissorRects(1, &app_->scissor_rect_);
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(base_rtv_handle_, app_->frame_index_,
-                                                 app_->rtv_descriptor_size_);
+                                           app_->rtv_descriptor_size_);
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle };
 
@@ -790,13 +824,16 @@ void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   command_list->DrawInstanced(4, 1, 0, 0);
 
   {
-    CD3DX12_RESOURCE_BARRIER barriers[2] = {};
+    CD3DX12_RESOURCE_BARRIER barriers[3] = {};
 
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].gbuffer.Get(),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
     barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].pos_gbuffer.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].diffuse_gbuffer.Get(),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
     command_list->ResourceBarrier(_countof(barriers), barriers);

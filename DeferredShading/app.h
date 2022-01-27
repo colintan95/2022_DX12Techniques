@@ -87,8 +87,6 @@ private:
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE pos_gbuffer_base_rtv_handle_;
-
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_cbv_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE base_cbv_gpu_handle_;
 
@@ -173,6 +171,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> gbuffer;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> pos_gbuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> diffuse_gbuffer;
 
     UINT64 fence_value = 0;
   };
