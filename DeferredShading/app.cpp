@@ -294,6 +294,39 @@ void App::InitResources() {
   graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
   model_ = DirectX::Model::CreateFromSDKMESH(device_.Get(), L"cornell_box.sdkmesh");
 
+  DirectX::ResourceUploadBatch resource_upload(device_.Get());
+  resource_upload.Begin();
+  model_->LoadStaticBuffers(device_.Get(), resource_upload);
+
+  std::future<void> resource_upload_done = resource_upload.End(command_queue_.Get());
+  resource_upload_done.wait();
+
+  for (auto& mesh : model_->meshes) {
+    for (auto& mesh_part : mesh->opaqueMeshParts) {
+      DrawCallArgs args{};
+
+      args.primitive_type = mesh_part->primitiveType;
+
+      args.vertex_buffer_view.BufferLocation =
+          mesh_part->staticVertexBuffer->GetGPUVirtualAddress();
+      args.vertex_buffer_view.SizeInBytes = mesh_part->vertexBufferSize;
+      args.vertex_buffer_view.StrideInBytes = mesh_part->vertexStride;
+
+      args.index_buffer_view.BufferLocation =
+          mesh_part->staticIndexBuffer->GetGPUVirtualAddress();
+      args.index_buffer_view.SizeInBytes = mesh_part->indexBufferSize;
+      args.index_buffer_view.Format = mesh_part->indexFormat;
+
+      args.index_count = mesh_part->indexCount;
+      args.start_index = mesh_part->startIndex;
+      args.vertex_offset = mesh_part->vertexOffset;
+
+      args.material_index = mesh_part->materialIndex;
+
+      draw_call_args_.push_back(args);
+    }
+  }
+
   for (const auto& effect_info : model_->materials) {
     Material material{};
     material.ambient_color = DirectX::XMFLOAT4(effect_info.ambientColor.x,

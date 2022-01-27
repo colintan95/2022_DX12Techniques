@@ -6,8 +6,6 @@
 
 #include "d3dx12.h"
 
-#include "ResourceUploadBatch.h"
-
 #include "dx_utils.h"
 #include "ReadData.h"
 
@@ -126,13 +124,6 @@ void GeometryPass::CreateBuffersAndUploadData() {
 
     materials_buffer_->Unmap(0, nullptr);
   }
-
-  DirectX::ResourceUploadBatch resource_upload(app_->device_.Get());
-  resource_upload.Begin();
-  app_->model_->LoadStaticBuffers(app_->device_.Get(), resource_upload);
-
-  std::future<void> resource_upload_done = resource_upload.End(app_->command_queue_.Get());
-  resource_upload_done.wait();
 }
 
 void GeometryPass::InitResources() {
@@ -223,32 +214,6 @@ void GeometryPass::InitResources() {
 
     app_->device_->CreateConstantBufferView(&cbv_desc, cbv_handle);
   }
-
-  for (auto& mesh : app_->model_->meshes) {
-    for (auto& mesh_part : mesh->opaqueMeshParts) {
-      DrawCallArgs args{};
-
-      args.primitive_type = mesh_part->primitiveType;
-
-      args.vertex_buffer_view.BufferLocation =
-          mesh_part->staticVertexBuffer->GetGPUVirtualAddress();
-      args.vertex_buffer_view.SizeInBytes = mesh_part->vertexBufferSize;
-      args.vertex_buffer_view.StrideInBytes = mesh_part->vertexStride;
-
-      args.index_buffer_view.BufferLocation =
-          mesh_part->staticIndexBuffer->GetGPUVirtualAddress();
-      args.index_buffer_view.SizeInBytes = mesh_part->indexBufferSize;
-      args.index_buffer_view.Format = mesh_part->indexFormat;
-
-      args.index_count = mesh_part->indexCount;
-      args.start_index = mesh_part->startIndex;
-      args.vertex_offset = mesh_part->vertexOffset;
-
-      args.material_index = mesh_part->materialIndex;
-
-      draw_call_args_.push_back(args);
-    }
-  }
 }
 
 void GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
@@ -306,7 +271,7 @@ void GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
   command_list->ClearDepthStencilView(dsv_handle_, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
-  for (DrawCallArgs& args : draw_call_args_) {
+  for (App::DrawCallArgs& args : app_->draw_call_args_) {
     command_list->SetGraphicsRoot32BitConstant(2, args.material_index, 0);
 
     command_list->IASetPrimitiveTopology(args.primitive_type);

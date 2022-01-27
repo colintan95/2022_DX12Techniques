@@ -5,8 +5,6 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
-#include <vector>
-
 #include "d3dx12.h"
 
 #include "constants.h"
@@ -75,20 +73,6 @@ private:
     };
     static constexpr int kNumDescriptors = Index::kMax + 1;
   };
-
-  struct DrawCallArgs {
-    D3D12_PRIMITIVE_TOPOLOGY primitive_type;
-    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
-    D3D12_INDEX_BUFFER_VIEW index_buffer_view;
-
-    uint32_t index_count;
-    uint32_t start_index;
-    int32_t vertex_offset;
-
-    uint32_t material_index;
-  };
-
-  std::vector<DrawCallArgs> draw_call_args_;
 };
 
 #endif  // GEOMETRY_PASS_H_

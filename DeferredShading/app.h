@@ -112,6 +112,20 @@ private:
   std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
   std::unique_ptr<DirectX::Model> model_;
 
+  struct DrawCallArgs {
+    D3D12_PRIMITIVE_TOPOLOGY primitive_type;
+    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
+    D3D12_INDEX_BUFFER_VIEW index_buffer_view;
+
+    uint32_t index_count;
+    uint32_t start_index;
+    int32_t vertex_offset;
+
+    uint32_t material_index;
+  };
+
+  std::vector<DrawCallArgs> draw_call_args_;
+
   DirectX::XMFLOAT4X4 view_mat_;
   DirectX::XMFLOAT4X4 world_view_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
