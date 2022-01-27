@@ -36,8 +36,6 @@ private:
   Microsoft::WRL::ComPtr<ID3D12Resource> matrix_buffer_;
   UINT matrix_buffer_size_ = 0;
 
-  DirectX::XMFLOAT4X4 shadow_mat_;
-
   CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
   CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
 

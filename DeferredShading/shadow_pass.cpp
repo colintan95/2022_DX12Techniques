@@ -25,11 +25,12 @@ void ShadowPass::InitPipeline() {
   CD3DX12_DESCRIPTOR_RANGE1 range;
   range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
 
-  CD3DX12_ROOT_PARAMETER1 root_param;
-  root_param.InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_VERTEX);
+  CD3DX12_ROOT_PARAMETER1 root_params[2] = {};
+  root_params[0].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_VERTEX);
+  root_params[1].InitAsConstants(1, 1, 0, D3D12_SHADER_VISIBILITY_VERTEX);
 
   CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
-  root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
+  root_signature_desc.Init_1_1(_countof(root_params), root_params, 0, nullptr,
                                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
   ComPtr<ID3DBlob> signature;
@@ -74,34 +75,22 @@ void ShadowPass::InitPipeline() {
 void ShadowPass::CreateBuffersAndUploadData() {
   // Must be a multiple 256 bytes.
   matrix_buffer_size_ =
-      (sizeof(DirectX::XMFLOAT4X4) + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
+      (sizeof(DirectX::XMFLOAT4X4) * 6 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
       ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
 
   CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
   CD3DX12_RESOURCE_DESC resource_desc =
       CD3DX12_RESOURCE_DESC::Buffer(matrix_buffer_size_);
 
-  DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
-  DirectX::XMMATRIX view_mat =
-      DirectX::XMMatrixTranslation(-(app_->light_pos_.x), -(app_->light_pos_.y),
-                                   -(app_->light_pos_.z)) *
-      DirectX::XMMatrixRotationX(-DirectX::XM_PI / 2.f);
-  DirectX::XMMATRIX proj_mat = DirectX::XMMatrixPerspectiveFovLH(
-      90.f, static_cast<float>(kShadowBufferWidth) / static_cast<float>(kShadowBufferHeight), 0.01f,
-      10.f);
-
-  DirectX::XMStoreFloat4x4(&shadow_mat_,
-                           DirectX::XMMatrixTranspose(world_mat * view_mat * proj_mat));
-
   ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                         &resource_desc,
                                                         D3D12_RESOURCE_STATE_GENERIC_READ,
                                                         nullptr, IID_PPV_ARGS(&matrix_buffer_)));
 
-  DirectX::XMFLOAT4X4* buffer_ptr;
+  void* buffer_ptr;
   ThrowIfFailed(matrix_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
 
-  *buffer_ptr = shadow_mat_;
+  memcpy(buffer_ptr, app_->shadow_mats_, sizeof(DirectX::XMFLOAT4X4) * 6);
 
   matrix_buffer_->Unmap(0, nullptr);
 }
@@ -147,19 +136,24 @@ void ShadowPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
   command_list->SetGraphicsRootDescriptorTable(0, cbv_gpu_handle_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle = frames_[app_->frame_index_].base_dsv_handle;
+  for (int i = 0; i < 6; ++i) {
+    command_list->SetGraphicsRoot32BitConstant(1, i, 0);
 
-  command_list->OMSetRenderTargets(0, nullptr, false, &dsv_handle);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(frames_[app_->frame_index_].base_dsv_handle, i,
+                                             app_->dsv_descriptor_size_);
 
-  command_list->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+    command_list->OMSetRenderTargets(0, nullptr, false, &dsv_handle);
 
-  for (App::DrawCallArgs& args : app_->draw_call_args_) {
-    command_list->IASetPrimitiveTopology(args.primitive_type);
+    command_list->ClearDepthStencilView(dsv_handle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
-    command_list->IASetVertexBuffers(0, 1, &args.vertex_buffer_view);
-    command_list->IASetIndexBuffer(&args.index_buffer_view);
+    for (App::DrawCallArgs& args : app_->draw_call_args_) {
+      command_list->IASetPrimitiveTopology(args.primitive_type);
 
-    command_list->DrawIndexedInstanced(args.index_count, 1, args.start_index, args.vertex_offset,
-                                       0);
+      command_list->IASetVertexBuffers(0, 1, &args.vertex_buffer_view);
+      command_list->IASetIndexBuffer(&args.index_buffer_view);
+
+      command_list->DrawIndexedInstanced(args.index_count, 1, args.start_index, args.vertex_offset,
+                                         0);
+    }
   }
 }
