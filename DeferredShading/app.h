@@ -56,7 +56,9 @@ private:
 
   void WaitForGpu();
 
-  D3D_ROOT_SIGNATURE_VERSION root_signature_version_;
+  GeometryPass geometry_pass_;
+
+  LightingPass lighting_pass_;
 
   HWND window_hwnd_;
   int window_width_;
@@ -64,16 +66,14 @@ private:
 
   int frame_index_ = 0;
 
+  D3D_ROOT_SIGNATURE_VERSION root_signature_version_;
+
   CD3DX12_VIEWPORT viewport_;
   CD3DX12_RECT scissor_rect_;
 
   Microsoft::WRL::ComPtr<ID3D12Device> device_;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> command_queue_;
   Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
-
-  GeometryPass geometry_pass_;
-
-  LightingPass lighting_pass_;
 
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
 
@@ -90,9 +90,9 @@ private:
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> sampler_heap_;
   UINT sampler_descriptor_size_ = 0;
 
-  Microsoft::WRL::ComPtr<ID3D12Resource> depth_stencil_;
-
   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> upload_buffers_;
+
+  Microsoft::WRL::ComPtr<ID3D12Resource> depth_stencil_;
 
   struct Frame {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
