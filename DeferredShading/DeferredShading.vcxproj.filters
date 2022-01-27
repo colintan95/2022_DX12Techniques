@@ -41,6 +41,9 @@
     <ClInclude Include="lighting_pass.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="shadow_pass.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="geometry_pass_vs.hlsl">
@@ -53,6 +56,9 @@
       <Filter>Source Files</Filter>
     </FxCompile>
     <FxCompile Include="lighting_pass_ps.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
+    <FxCompile Include="shadow_pass_vs.hlsl">
       <Filter>Source Files</Filter>
     </FxCompile>
   </ItemGroup>
