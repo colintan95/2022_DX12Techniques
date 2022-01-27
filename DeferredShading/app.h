@@ -84,7 +84,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_cbv_cpu_handle_;
@@ -110,10 +109,27 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
     UINT materials_buffer_size_ = 0;
 
+    struct Frame {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
+    };
+
+    Frame frames_[kNumFrames];
+
     enum class CbvHeapIndex {
       kMatrixBuffer = 0,
       kMaterialsBuffer,
       kSize
+    };
+
+    struct Rtv {
+      struct Index {
+        static constexpr int kAmbientGbufferTexture = 0;
+        static constexpr int kPositionGbufferTexture = 1;
+        static constexpr int kDiffuseGbufferTexture = 2;
+        static constexpr int kNormalGbufferTexture = 3;
+        static constexpr int kMax = kNormalGbufferTexture;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
     };
   };
 
@@ -160,7 +176,6 @@ private:
     Frame frames_[kNumFrames];
 
     struct Srv {
-
       struct Index {
         static constexpr int kAmbientGbufferTexture = 0;
         static constexpr int kPositionGbufferTexture = 1;
@@ -168,7 +183,6 @@ private:
         static constexpr int kNormalGbufferTexture = 3;
         static constexpr int kMax = kNormalGbufferTexture;
       };
-
       static constexpr int kNumDescriptors = Index::kMax + 1;
     };
 
