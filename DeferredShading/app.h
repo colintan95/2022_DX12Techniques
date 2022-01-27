@@ -139,6 +139,12 @@ private:
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> light_pos_buffer_;
+    UINT light_pos_buffer_size_ = 0;
   };
 
   GeometryPass geometry_pass_;
@@ -172,6 +178,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> pos_gbuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> diffuse_gbuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> normal_gbuffer;
 
     UINT64 fence_value = 0;
   };
@@ -181,6 +188,7 @@ private:
   std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
   std::unique_ptr<DirectX::Model> model_;
 
+  DirectX::XMFLOAT4X4 view_mat_;
   DirectX::XMFLOAT4X4 world_view_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
 
@@ -190,6 +198,8 @@ private:
   };
 
   std::vector<Material> materials_;
+
+  DirectX::XMFLOAT4 light_camera_pos_;
 };
 
 #endif  // APP_H_
