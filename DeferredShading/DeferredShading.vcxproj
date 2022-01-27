@@ -148,10 +148,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="app.cpp" />
+    <ClCompile Include="geometry_pass.cpp" />
+    <ClCompile Include="lighting_pass.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app.h" />
+    <ClInclude Include="constants.h" />
+    <ClInclude Include="geometry_pass.h" />
+    <ClInclude Include="lighting_pass.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DirectXTK12\DirectXTK_Desktop_2019_Win10.vcxproj">
