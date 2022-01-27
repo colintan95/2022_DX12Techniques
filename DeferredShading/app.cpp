@@ -298,27 +298,29 @@ void App::InitDescriptorHeapsAndHandles() {
     cbv_srv_descriptor_size_ =
          device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle(
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_srv_cpu_handle(
         cbv_srv_heap_->GetCPUDescriptorHandleForHeapStart());
-    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle(
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_srv_gpu_handle(
         cbv_srv_heap_->GetGPUDescriptorHandleForHeapStart());
 
-    geometry_pass_.base_cbv_cpu_handle_ = cbv_cpu_handle;
-    geometry_pass_.base_cbv_gpu_handle_ = cbv_gpu_handle;
+    geometry_pass_.base_cbv_cpu_handle_ = cbv_srv_cpu_handle;
+    geometry_pass_.base_cbv_gpu_handle_ = cbv_srv_gpu_handle;
 
-    cbv_cpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
-    cbv_gpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_srv_cpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_srv_gpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
 
     for (int i = 0; i < kNumFrames; ++i) {
-      lighting_pass_.frames_[i].base_srv_cpu_handle_ = cbv_cpu_handle;
-      lighting_pass_.frames_[i].base_srv_gpu_handle_ = cbv_gpu_handle;
+      lighting_pass_.frames_[i].base_srv_cpu_handle_ = cbv_srv_cpu_handle;
+      lighting_pass_.frames_[i].base_srv_gpu_handle_ = cbv_srv_gpu_handle;
 
-      cbv_cpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors, cbv_srv_descriptor_size_);
-      cbv_gpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors, cbv_srv_descriptor_size_);
+      cbv_srv_cpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors,
+                                cbv_srv_descriptor_size_);
+      cbv_srv_gpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors,
+                                cbv_srv_descriptor_size_);
     }
 
-    lighting_pass_.cbv_cpu_handle_ = cbv_cpu_handle;
-    lighting_pass_.cbv_gpu_handle_ = cbv_gpu_handle;
+    lighting_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
+    lighting_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
   }
 
   {
