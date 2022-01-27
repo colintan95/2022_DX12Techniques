@@ -109,6 +109,12 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
     UINT materials_buffer_size_ = 0;
+
+    enum class CbvHeapIndex {
+      kMatrixBuffer = 0,
+      kMaterialsBuffer,
+      kSize
+    };
   };
 
   class LightingPass {
@@ -145,6 +151,31 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> light_pos_buffer_;
     UINT light_pos_buffer_size_ = 0;
+
+    struct Frame {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
+      CD3DX12_GPU_DESCRIPTOR_HANDLE base_srv_gpu_handle_;
+    };
+
+    Frame frames_[kNumFrames];
+
+    struct Srv {
+
+      struct Index {
+        static constexpr int kAmbientGbufferTexture = 0;
+        static constexpr int kPositionGbufferTexture = 1;
+        static constexpr int kDiffuseGbufferTexture = 2;
+        static constexpr int kNormalGbufferTexture = 3;
+        static constexpr int kMax = kNormalGbufferTexture;
+      };
+
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
+
+    struct SamplerIndex {
+      static constexpr int kGBufferSampler = 0;
+      static constexpr int kMax = kGBufferSampler;
+    };
   };
 
   GeometryPass geometry_pass_;

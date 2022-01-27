@@ -1,4 +1,4 @@
-cbuffer SceneConstantBuffer : register(b0) {
+cbuffer MatrixBuffer : register(b0) {
 	float4x4 view_mat;
 	float4x4 world_view_mat;
 	float4x4 world_view_proj_mat;

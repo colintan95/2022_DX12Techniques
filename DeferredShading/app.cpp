@@ -19,6 +19,10 @@
 using Microsoft::WRL::ComPtr;
 using DX::ThrowIfFailed;
 
+namespace {
+
+};
+
 App::App(HWND window_hwnd, int window_width, int window_height)
   : window_hwnd_(window_hwnd),
     window_width_(window_width),
@@ -264,8 +268,10 @@ void App::InitDescriptorHeapsAndHandles() {
 
   dsv_descriptor_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
+
+
   D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_heap_desc{};
-  cbv_srv_heap_desc.NumDescriptors = kNumFrames * 4 + 3;
+  cbv_srv_heap_desc.NumDescriptors = kNumFrames * LightingPass::Srv::kNumDescriptors + 3;
   cbv_srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   cbv_srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   ThrowIfFailed(device_->CreateDescriptorHeap(&cbv_srv_heap_desc, IID_PPV_ARGS(&cbv_srv_heap_)));
@@ -282,23 +288,39 @@ void App::InitDescriptorHeapsAndHandles() {
   cbv_cpu_handle.Offset(2, cbv_srv_descriptor_size_);
   cbv_gpu_handle.Offset(2, cbv_srv_descriptor_size_);
 
-  lighting_pass_.base_srv_cpu_handle_ = cbv_cpu_handle;
-  lighting_pass_.base_srv_gpu_handle_ = cbv_gpu_handle;
+  for (int i = 0; i < kNumFrames; ++i) {
+    lighting_pass_.frames_[i].base_srv_cpu_handle_ = cbv_cpu_handle;
+    lighting_pass_.frames_[i].base_srv_gpu_handle_ = cbv_gpu_handle;
 
-  cbv_cpu_handle.Offset(kNumFrames * 4, cbv_srv_descriptor_size_);
-  cbv_gpu_handle.Offset(kNumFrames * 4, cbv_srv_descriptor_size_);
+    cbv_cpu_handle.Offset(LightingPass::Srv::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_gpu_handle.Offset(LightingPass::Srv::kNumDescriptors, cbv_srv_descriptor_size_);
+  }
 
   lighting_pass_.cbv_cpu_handle_ = cbv_cpu_handle;
   lighting_pass_.cbv_gpu_handle_ = cbv_gpu_handle;
 
-  D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
-  sampler_heap_desc.NumDescriptors = 1;
-  sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-  sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
+  {
+    int num_descriptors = LightingPass::SamplerIndex::kMax + 1;
 
-  lighting_pass_.sampler_cpu_handle_ = sampler_heap_->GetCPUDescriptorHandleForHeapStart();
-  lighting_pass_.sampler_gpu_handle_ = sampler_heap_->GetGPUDescriptorHandleForHeapStart();
+    D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
+    sampler_heap_desc.NumDescriptors = num_descriptors;
+    sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+    sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle(
+        sampler_heap_->GetCPUDescriptorHandleForHeapStart());
+    CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle(
+        sampler_heap_->GetGPUDescriptorHandleForHeapStart());
+
+    sampler_cpu_handle.Offset(LightingPass::SamplerIndex::kGBufferSampler,
+                              sampler_descriptor_size_);
+    sampler_gpu_handle.Offset(LightingPass::SamplerIndex::kGBufferSampler,
+                              sampler_descriptor_size_);
+
+    lighting_pass_.sampler_cpu_handle_ = sampler_cpu_handle;
+    lighting_pass_.sampler_gpu_handle_ = sampler_gpu_handle;
+  }
 }
 
 void App::InitResources() {
@@ -647,10 +669,12 @@ void App::LightingPass::InitResources() {
     rtv_handle.Offset(1, app_->rtv_descriptor_size_);
   }
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle = base_srv_cpu_handle_;
 
   for (int i = 0; i < kNumFrames; ++i) {
     {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frames_[i].base_srv_cpu_handle_,
+                                               Srv::Index::kAmbientGbufferTexture,
+                                               app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -662,9 +686,10 @@ void App::LightingPass::InitResources() {
                                               srv_handle);
     }
 
-    srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
-
     {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frames_[i].base_srv_cpu_handle_,
+                                               Srv::Index::kPositionGbufferTexture,
+                                               app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -676,9 +701,10 @@ void App::LightingPass::InitResources() {
                                               srv_handle);
     }
 
-    srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
-
     {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frames_[i].base_srv_cpu_handle_,
+                                               Srv::Index::kDiffuseGbufferTexture,
+                                               app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -690,9 +716,10 @@ void App::LightingPass::InitResources() {
                                               srv_handle);
     }
 
-    srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
-
-     {
+    {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frames_[i].base_srv_cpu_handle_,
+                                               Srv::Index::kNormalGbufferTexture,
+                                               app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -703,8 +730,6 @@ void App::LightingPass::InitResources() {
       app_->device_->CreateShaderResourceView(app_->frames_[i].normal_gbuffer.Get(), &srv_desc,
                                               srv_handle);
     }
-
-    srv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
   }
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle = cbv_cpu_handle_;
@@ -887,12 +912,9 @@ void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   ID3D12DescriptorHeap* heaps[] = { app_->cbv_srv_heap_.Get(), app_->sampler_heap_.Get() };
   command_list->SetDescriptorHeaps(_countof(heaps), heaps);
 
-  CD3DX12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle(base_srv_gpu_handle_, app_->frame_index_ * 4,
-                                               app_->cbv_srv_descriptor_size_);
-
   CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle = cbv_gpu_handle_;
 
-  command_list->SetGraphicsRootDescriptorTable(0, srv_gpu_handle);
+  command_list->SetGraphicsRootDescriptorTable(0, frames_[app_->frame_index_].base_srv_gpu_handle_);
   command_list->SetGraphicsRootDescriptorTable(1, cbv_gpu_handle);
   command_list->SetGraphicsRootDescriptorTable(2, sampler_gpu_handle_);
 
