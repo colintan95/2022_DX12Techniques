@@ -248,7 +248,9 @@ void App::LightingPass::InitPipeline() {
 void App::InitDescriptorHeapsAndHandles() {
   {
     D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
-    rtv_heap_desc.NumDescriptors = kNumFrames * 5;
+    rtv_heap_desc.NumDescriptors =
+        GeometryPass::RtvPerFrame::kNumDescriptors * kNumFrames +
+        LightingPass::RtvPerFrame::kNumDescriptors * kNumFrames;
     rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(&rtv_heap_)));
@@ -260,26 +262,35 @@ void App::InitDescriptorHeapsAndHandles() {
     for (int i = 0; i < kNumFrames; ++i) {
       geometry_pass_.frames_[i].base_rtv_handle_ = rtv_handle;
 
-      rtv_handle.Offset(GeometryPass::Rtv::kNumDescriptors, rtv_descriptor_size_);
+      rtv_handle.Offset(GeometryPass::RtvPerFrame::kNumDescriptors, rtv_descriptor_size_);
     }
 
-    lighting_pass_.base_rtv_handle_ = rtv_handle;
+    for (int i = 0; i < kNumFrames; ++i) {
+      lighting_pass_.frames_[i].base_rtv_handle_ = rtv_handle;
+
+      rtv_handle.Offset(LightingPass::RtvPerFrame::kNumDescriptors, rtv_descriptor_size_);
+    }
   }
 
   {
     D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
-    dsv_heap_desc.NumDescriptors = 1;
+    dsv_heap_desc.NumDescriptors = GeometryPass::DsvStatic::kNumDescriptors;
     dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(&dsv_heap_)));
 
     dsv_descriptor_size_ =
         device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
+    geometry_pass_.dsv_handle_ = dsv_heap_->GetCPUDescriptorHandleForHeapStart();
   }
 
   {
     D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_heap_desc{};
-    cbv_srv_heap_desc.NumDescriptors = kNumFrames * LightingPass::Srv::kNumDescriptors + 3;
+    cbv_srv_heap_desc.NumDescriptors =
+        GeometryPass::CbvStatic::kNumDescriptors +
+        LightingPass::CbvStatic::kNumDescriptors +
+        LightingPass::SrvPerFrame::kNumDescriptors * kNumFrames;
     cbv_srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     cbv_srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&cbv_srv_heap_desc, IID_PPV_ARGS(&cbv_srv_heap_)));
@@ -287,21 +298,23 @@ void App::InitDescriptorHeapsAndHandles() {
     cbv_srv_descriptor_size_ =
          device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle(cbv_srv_heap_->GetCPUDescriptorHandleForHeapStart());
-    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle(cbv_srv_heap_->GetGPUDescriptorHandleForHeapStart());
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle(
+        cbv_srv_heap_->GetCPUDescriptorHandleForHeapStart());
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle(
+        cbv_srv_heap_->GetGPUDescriptorHandleForHeapStart());
 
     geometry_pass_.base_cbv_cpu_handle_ = cbv_cpu_handle;
     geometry_pass_.base_cbv_gpu_handle_ = cbv_gpu_handle;
 
-    cbv_cpu_handle.Offset(2, cbv_srv_descriptor_size_);
-    cbv_gpu_handle.Offset(2, cbv_srv_descriptor_size_);
+    cbv_cpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_gpu_handle.Offset(GeometryPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
 
     for (int i = 0; i < kNumFrames; ++i) {
       lighting_pass_.frames_[i].base_srv_cpu_handle_ = cbv_cpu_handle;
       lighting_pass_.frames_[i].base_srv_gpu_handle_ = cbv_gpu_handle;
 
-      cbv_cpu_handle.Offset(LightingPass::Srv::kNumDescriptors, cbv_srv_descriptor_size_);
-      cbv_gpu_handle.Offset(LightingPass::Srv::kNumDescriptors, cbv_srv_descriptor_size_);
+      cbv_cpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors, cbv_srv_descriptor_size_);
+      cbv_gpu_handle.Offset(LightingPass::SrvPerFrame::kNumDescriptors, cbv_srv_descriptor_size_);
     }
 
     lighting_pass_.cbv_cpu_handle_ = cbv_cpu_handle;
@@ -309,10 +322,8 @@ void App::InitDescriptorHeapsAndHandles() {
   }
 
   {
-    int num_descriptors = LightingPass::SamplerIndex::kMax + 1;
-
     D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc{};
-    sampler_heap_desc.NumDescriptors = num_descriptors;
+    sampler_heap_desc.NumDescriptors = LightingPass::SamplerStatic::kNumDescriptors;
     sampler_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     sampler_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&sampler_heap_desc, IID_PPV_ARGS(&sampler_heap_)));
@@ -322,9 +333,9 @@ void App::InitDescriptorHeapsAndHandles() {
     CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle(
         sampler_heap_->GetGPUDescriptorHandleForHeapStart());
 
-    sampler_cpu_handle.Offset(LightingPass::SamplerIndex::kGBufferSampler,
+    sampler_cpu_handle.Offset(LightingPass::SamplerStatic::Index::kGBufferSampler,
                               sampler_descriptor_size_);
-    sampler_gpu_handle.Offset(LightingPass::SamplerIndex::kGBufferSampler,
+    sampler_gpu_handle.Offset(LightingPass::SamplerStatic::Index::kGBufferSampler,
                               sampler_descriptor_size_);
 
     lighting_pass_.sampler_cpu_handle_ = sampler_cpu_handle;
@@ -399,15 +410,6 @@ void App::InitResources() {
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                    &resource_desc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                                    &clear_value, IID_PPV_ARGS(&depth_stencil_)));
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
-    geometry_pass_.dsv_handle_ = dsv_handle;
-
-    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
-    depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
-    depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
-    device_->CreateDepthStencilView(depth_stencil_.Get(), &depth_stencil_desc, dsv_handle);
   }
 
   graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
@@ -468,29 +470,28 @@ void App::InitResources() {
 
 void App::GeometryPass::CreateBuffersAndUploadData() {
   // Must be a multiple 256 bytes.
-  scene_constant_buffer_size_ =
+  matrix_buffer_size_ =
       (sizeof(DirectX::XMFLOAT4X4) * 2 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
       ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
 
   {
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC resource_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(scene_constant_buffer_size_);
+        CD3DX12_RESOURCE_DESC::Buffer(matrix_buffer_size_);
 
     ThrowIfFailed(app_->device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                           &resource_desc,
                                                           D3D12_RESOURCE_STATE_GENERIC_READ,
-                                                          nullptr,
-                                                          IID_PPV_ARGS(&scene_constant_buffer_)));
+                                                          nullptr, IID_PPV_ARGS(&matrix_buffer_)));
 
     DirectX::XMFLOAT4X4* buffer_ptr;
-    ThrowIfFailed(scene_constant_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+    ThrowIfFailed(matrix_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
 
     buffer_ptr[0] = app_->view_mat_;
     buffer_ptr[1] = app_->world_view_mat_;
     buffer_ptr[2] = app_->world_view_proj_mat_;
 
-    scene_constant_buffer_->Unmap(0, nullptr);
+    matrix_buffer_->Unmap(0, nullptr);
   }
 
   // Must be a multiple 256 bytes.
@@ -574,13 +575,12 @@ void App::LightingPass::CreateBuffersAndUploadData() {
 }
 
 void App::GeometryPass::InitResources() {
-
   for (int i = 0; i < kNumFrames; ++i) {
     CD3DX12_CPU_DESCRIPTOR_HANDLE frame_base_rtv_handle = frames_[i].base_rtv_handle_;
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frame_base_rtv_handle,
-                                               Rtv::Index::kAmbientGbufferTexture,
+                                               RtvPerFrame::Index::kAmbientGbufferTexture,
                                                app_->rtv_descriptor_size_);
 
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
@@ -592,7 +592,7 @@ void App::GeometryPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frame_base_rtv_handle,
-                                               Rtv::Index::kPositionGbufferTexture,
+                                               RtvPerFrame::Index::kPositionGbufferTexture,
                                                app_->rtv_descriptor_size_);
 
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
@@ -605,7 +605,7 @@ void App::GeometryPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frame_base_rtv_handle,
-                                               Rtv::Index::kDiffuseGbufferTexture,
+                                               RtvPerFrame::Index::kDiffuseGbufferTexture,
                                                app_->rtv_descriptor_size_);
 
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
@@ -618,7 +618,7 @@ void App::GeometryPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frame_base_rtv_handle,
-                                               Rtv::Index::kNormalGbufferTexture,
+                                               RtvPerFrame::Index::kNormalGbufferTexture,
                                                app_->rtv_descriptor_size_);
 
       D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
@@ -630,19 +630,32 @@ void App::GeometryPass::InitResources() {
     }
   }
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle = base_cbv_cpu_handle_;
+  {
+    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
+    depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
+    depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
+
+    app_->device_->CreateDepthStencilView(app_->depth_stencil_.Get(), &depth_stencil_desc,
+                                          dsv_handle_);
+  }
 
   {
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle(base_cbv_cpu_handle_, CbvStatic::Index::kMatrixBuffer,
+                                             app_->cbv_srv_descriptor_size_);
+
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc{};
-    cbv_desc.BufferLocation = scene_constant_buffer_->GetGPUVirtualAddress();
-    cbv_desc.SizeInBytes = scene_constant_buffer_size_;
+    cbv_desc.BufferLocation = matrix_buffer_->GetGPUVirtualAddress();
+    cbv_desc.SizeInBytes = matrix_buffer_size_;
 
     app_->device_->CreateConstantBufferView(&cbv_desc, cbv_handle);
   }
 
-  cbv_handle.Offset(1, app_->cbv_srv_descriptor_size_);
-
   {
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle(base_cbv_cpu_handle_,
+                                             CbvStatic::Index::kMaterialsBuffer,
+                                             app_->cbv_srv_descriptor_size_);
+
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc{};
     cbv_desc.BufferLocation = materials_buffer_->GetGPUVirtualAddress();
     cbv_desc.SizeInBytes = materials_buffer_size_;
@@ -678,13 +691,13 @@ void App::GeometryPass::InitResources() {
 }
 
 void App::LightingPass::InitResources() {
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle = base_rtv_handle_;
-
   for (int i = 0; i < kNumFrames; ++i) {
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frames_[i].base_rtv_handle_,
+                                             RtvPerFrame::Index::kSwapChainBuffer,
+                                             app_->rtv_descriptor_size_);
+
     app_->device_->CreateRenderTargetView(app_->frames_[i].swap_chain_buffer.Get(), nullptr,
                                           rtv_handle);
-
-    rtv_handle.Offset(1, app_->rtv_descriptor_size_);
   }
 
 
@@ -693,7 +706,7 @@ void App::LightingPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
-                                               Srv::Index::kAmbientGbufferTexture,
+                                               SrvPerFrame::Index::kAmbientGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
@@ -708,7 +721,7 @@ void App::LightingPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
-                                               Srv::Index::kPositionGbufferTexture,
+                                               SrvPerFrame::Index::kPositionGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
@@ -723,7 +736,7 @@ void App::LightingPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
-                                               Srv::Index::kDiffuseGbufferTexture,
+                                               SrvPerFrame::Index::kDiffuseGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
@@ -738,7 +751,7 @@ void App::LightingPass::InitResources() {
 
     {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
-                                               Srv::Index::kNormalGbufferTexture,
+                                               SrvPerFrame::Index::kNormalGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
       // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
@@ -752,13 +765,11 @@ void App::LightingPass::InitResources() {
     }
   }
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_handle = cbv_cpu_handle_;
-
   D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc{};
   cbv_desc.BufferLocation = light_pos_buffer_->GetGPUVirtualAddress();
   cbv_desc.SizeInBytes = light_pos_buffer_size_;
 
-  app_->device_->CreateConstantBufferView(&cbv_desc, cbv_handle);
+  app_->device_->CreateConstantBufferView(&cbv_desc, cbv_cpu_handle_);
 
   D3D12_SAMPLER_DESC sampler_desc{};
   sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -868,16 +879,16 @@ void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
       frames_[app_->frame_index_].base_rtv_handle_;
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE ambient_rtv_handle(frame_base_rtv_handle,
-                                                   Rtv::Index::kAmbientGbufferTexture,
+                                                   RtvPerFrame::Index::kAmbientGbufferTexture,
                                                    app_->rtv_descriptor_size_);
   CD3DX12_CPU_DESCRIPTOR_HANDLE pos_rtv_handle(frame_base_rtv_handle,
-                                               Rtv::Index::kPositionGbufferTexture,
+                                               RtvPerFrame::Index::kPositionGbufferTexture,
                                                app_->rtv_descriptor_size_);
   CD3DX12_CPU_DESCRIPTOR_HANDLE diffuse_rtv_handle(frame_base_rtv_handle,
-                                                   Rtv::Index::kDiffuseGbufferTexture,
+                                                   RtvPerFrame::Index::kDiffuseGbufferTexture,
                                                    app_->rtv_descriptor_size_);
   CD3DX12_CPU_DESCRIPTOR_HANDLE normal_rtv_handle(frame_base_rtv_handle,
-                                                  Rtv::Index::kNormalGbufferTexture,
+                                                  RtvPerFrame::Index::kNormalGbufferTexture,
                                                   app_->rtv_descriptor_size_);
 
   CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = {
@@ -948,15 +959,16 @@ void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   command_list->RSSetViewports(1, &app_->viewport_);
   command_list->RSSetScissorRects(1, &app_->scissor_rect_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(base_rtv_handle_, app_->frame_index_,
-                                           app_->rtv_descriptor_size_);
+  CD3DX12_CPU_DESCRIPTOR_HANDLE swap_chain_rtv_handle(frames_[app_->frame_index_].base_rtv_handle_,
+                                                      RtvPerFrame::Index::kSwapChainBuffer,
+                                                      app_->rtv_descriptor_size_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { rtv_handle };
+  CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handles[] = { swap_chain_rtv_handle };
 
   command_list->OMSetRenderTargets(_countof(rtv_handles), rtv_handles, false, nullptr);
 
   const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
-  command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);;
+  command_list->ClearRenderTargetView(swap_chain_rtv_handle, clear_color, 0, nullptr);;
 
   command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 

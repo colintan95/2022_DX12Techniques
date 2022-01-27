@@ -61,11 +61,6 @@ private:
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> command_queue_;
   Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
 
-  struct Pass {
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
-  };
-
   class GeometryPass {
   public:
     GeometryPass(App* app) : app_(app) {}
@@ -84,10 +79,50 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource> matrix_buffer_;
+    UINT matrix_buffer_size_ = 0;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
+    UINT materials_buffer_size_ = 0;
+
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle_;
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_cbv_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE base_cbv_gpu_handle_;
+
+    struct DsvStatic {
+      struct Index {
+        static constexpr int kDepthBuffer = 0;
+        static constexpr int kMax = kDepthBuffer;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
+
+    struct CbvStatic {
+      struct Index {
+        static constexpr int kMatrixBuffer = 0;
+        static constexpr int kMaterialsBuffer = 1;
+        static constexpr int kMax = kMaterialsBuffer;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
+
+    struct Frame {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
+    };
+
+    Frame frames_[kNumFrames];
+
+    struct RtvPerFrame {
+      struct Index {
+        static constexpr int kAmbientGbufferTexture = 0;
+        static constexpr int kPositionGbufferTexture = 1;
+        static constexpr int kDiffuseGbufferTexture = 2;
+        static constexpr int kNormalGbufferTexture = 3;
+        static constexpr int kMax = kNormalGbufferTexture;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
 
     struct DrawCallArgs {
       D3D12_PRIMITIVE_TOPOLOGY primitive_type;
@@ -102,35 +137,6 @@ private:
     };
 
     std::vector<DrawCallArgs> draw_call_args_;
-
-    Microsoft::WRL::ComPtr<ID3D12Resource> scene_constant_buffer_;
-    UINT scene_constant_buffer_size_ = 0;
-
-    Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
-    UINT materials_buffer_size_ = 0;
-
-    struct Frame {
-      CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
-    };
-
-    Frame frames_[kNumFrames];
-
-    enum class CbvHeapIndex {
-      kMatrixBuffer = 0,
-      kMaterialsBuffer,
-      kSize
-    };
-
-    struct Rtv {
-      struct Index {
-        static constexpr int kAmbientGbufferTexture = 0;
-        static constexpr int kPositionGbufferTexture = 1;
-        static constexpr int kDiffuseGbufferTexture = 2;
-        static constexpr int kNormalGbufferTexture = 3;
-        static constexpr int kMax = kNormalGbufferTexture;
-      };
-      static constexpr int kNumDescriptors = Index::kMax + 1;
-    };
   };
 
   class LightingPass {
@@ -151,13 +157,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
-    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE base_srv_gpu_handle_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> light_pos_buffer_;
+    UINT light_pos_buffer_size_ = 0;
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
@@ -165,17 +166,40 @@ private:
     CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> light_pos_buffer_;
-    UINT light_pos_buffer_size_ = 0;
+    struct CbvStatic {
+      struct Index {
+        static constexpr int kLightPosBuffer = 0;
+        static constexpr int kMax = kLightPosBuffer;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
+
+    struct SamplerStatic {
+      struct Index {
+        static constexpr int kGBufferSampler = 0;
+        static constexpr int kMax = kGBufferSampler;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
 
     struct Frame {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE base_rtv_handle_;
+
       CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
       CD3DX12_GPU_DESCRIPTOR_HANDLE base_srv_gpu_handle_;
     };
 
     Frame frames_[kNumFrames];
 
-    struct Srv {
+    struct RtvPerFrame {
+      struct Index {
+        static constexpr int kSwapChainBuffer = 0;
+        static constexpr int kMax = kSwapChainBuffer;
+      };
+      static constexpr int kNumDescriptors = Index::kMax + 1;
+    };
+
+    struct SrvPerFrame {
       struct Index {
         static constexpr int kAmbientGbufferTexture = 0;
         static constexpr int kPositionGbufferTexture = 1;
@@ -186,10 +210,8 @@ private:
       static constexpr int kNumDescriptors = Index::kMax + 1;
     };
 
-    struct SamplerIndex {
-      static constexpr int kGBufferSampler = 0;
-      static constexpr int kMax = kGBufferSampler;
-    };
+    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
+    D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view_;
   };
 
   GeometryPass geometry_pass_;
