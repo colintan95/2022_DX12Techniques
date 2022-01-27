@@ -134,8 +134,7 @@ private:
 
   std::vector<DrawCallArgs> draw_call_args_;
 
-  DirectX::XMFLOAT4X4 view_mat_;
-  DirectX::XMFLOAT4X4 world_view_mat_;
+  DirectX::XMFLOAT4X4 world_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
 
   DirectX::XMFLOAT4X4 shadow_mats_[6];

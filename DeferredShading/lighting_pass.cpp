@@ -92,7 +92,7 @@ void LightingPass::CreateBuffersAndUploadData() {
     DirectX::XMFLOAT4* buffer_ptr;
     ThrowIfFailed(light_pos_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
 
-    *buffer_ptr = app_->light_camera_pos_;
+    *buffer_ptr = app_->light_pos_;
 
     light_pos_buffer_->Unmap(0, nullptr);
   }

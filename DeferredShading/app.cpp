@@ -410,9 +410,7 @@ void App::InitMatrices() {
           45.f, static_cast<float>(window_width_) / static_cast<float>(window_height_), 0.1f,
           1000.f);
 
-  DirectX::XMStoreFloat4x4(&view_mat_, DirectX::XMMatrixTranspose(view_mat));
-
-  DirectX::XMStoreFloat4x4(&world_view_mat_, DirectX::XMMatrixTranspose(world_mat * view_mat));
+  DirectX::XMStoreFloat4x4(&world_mat_, DirectX::XMMatrixTranspose(world_mat));
 
   // DirectXMath stores the matrix in row-major order while hlsl needs the matrix to be stored in
   // column-major order. So, we apply a transpose when storing the matrix in the buffer.
@@ -422,11 +420,6 @@ void App::InitMatrices() {
   DirectX::XMVECTOR light_pos = DirectX::XMVectorSet(0.f, 1.9f, 0.f, 1.f);
 
   DirectX::XMStoreFloat4(&light_pos_ , light_pos);
-
-  DirectX::XMVECTOR light_camera_pos =
-      DirectX::XMVector4Transform(light_pos, view_mat);
-
-  DirectX::XMStoreFloat4(&light_camera_pos_ , light_camera_pos);
 
   {
     DirectX::XMMATRIX light_pos_inverse_mat =

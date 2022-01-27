@@ -9,14 +9,14 @@ Texture2D diffuse_gbuf_tex : register(t2);
 Texture2D normal_gbuf_tex : register(t3);
 
 cbuffer LightPosBuffer : register(b0) {
-  float4 light_camera_pos;
+  float4 light_pos;
 }
 
 SamplerState gbuf_sampler : register(s0);
 
 float4 main(PSInput input) : SV_TARGET {
   float3 pos = pos_gbuf_tex.Sample(gbuf_sampler, input.texcoord).xyz;
-  float3 light_vec = normalize(light_camera_pos.xyz - pos);
+  float3 light_vec = normalize(light_pos.xyz - pos);
 
   float3 normal = normalize(normal_gbuf_tex.Sample(gbuf_sampler, input.texcoord).xyz);
 

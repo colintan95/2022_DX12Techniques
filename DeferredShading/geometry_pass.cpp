@@ -79,7 +79,7 @@ void GeometryPass::CreateBuffersAndUploadData() {
   // TODO: Replace the raw matrix count with a variable."
   // Must be a multiple 256 bytes.
   matrix_buffer_size_ =
-      (sizeof(DirectX::XMFLOAT4X4) * 3 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
+      (sizeof(DirectX::XMFLOAT4X4) * 2 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
       ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
 
   {
@@ -95,9 +95,8 @@ void GeometryPass::CreateBuffersAndUploadData() {
     DirectX::XMFLOAT4X4* buffer_ptr;
     ThrowIfFailed(matrix_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
 
-    buffer_ptr[0] = app_->view_mat_;
-    buffer_ptr[1] = app_->world_view_mat_;
-    buffer_ptr[2] = app_->world_view_proj_mat_;
+    buffer_ptr[0] = app_->world_mat_;
+    buffer_ptr[1] = app_->world_view_proj_mat_;
 
     matrix_buffer_->Unmap(0, nullptr);
   }

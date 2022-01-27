@@ -15,7 +15,7 @@ cbuffer MaterialIndex : register(b2) {
 
 struct PSInput {
 	float4 position : SV_POSITION;
-	float3 camera_pos : POSITION;
+	float3 world_pos : POSITION;
   float3 normal : NORMAL;
 };
 
@@ -30,7 +30,7 @@ PSOutput main(PSInput input) {
   PSOutput result;
 
   result.color = float4((materials[material_index].ambient_color).rgb, 1.f);
-  result.position = float4(input.camera_pos, 1.f);
+  result.position = float4(input.world_pos, 1.f);
   result.diffuse = float4((materials[material_index].diffuse_color).rgb, 1.f);
   result.normal = float4(input.normal, 0.f);
 
