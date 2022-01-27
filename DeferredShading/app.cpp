@@ -167,7 +167,7 @@ void App::InitDescriptorHeaps() {
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
 
     for (int i = 0; i < kNumFrames; ++i) {
-      shadow_pass_.frames_[i].dsv_handle = dsv_cpu_handle;
+      shadow_pass_.frames_[i].base_dsv_handle = dsv_cpu_handle;
 
       dsv_cpu_handle.Offset(ShadowPass::DsvPerFrame::kNumDescriptors, dsv_descriptor_size_);
     }
@@ -342,10 +342,12 @@ void App::CreateSharedBuffers() {
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, kShadowBufferWidth, kShadowBufferHeight,
                                      1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+    for (int j = 0; j < 6; ++j) {
+      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                    &resource_desc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                                    &clear_depth,
-                                                   IID_PPV_ARGS(&frames_[i].shadow_buffer_)));
+                                                   IID_PPV_ARGS(&frames_[i].shadow_buffers_[j])));
+    }
   }
 }
 
@@ -425,6 +427,44 @@ void App::InitMatrices() {
       DirectX::XMVector4Transform(light_pos, view_mat);
 
   DirectX::XMStoreFloat4(&light_camera_pos_ , light_camera_pos);
+
+  {
+    DirectX::XMMATRIX light_pos_inverse_mat =
+        DirectX::XMMatrixTranslation(-light_pos_.x, -light_pos_.y, -light_pos_.z);
+    DirectX::XMMATRIX shadow_proj_mat = DirectX::XMMatrixPerspectiveFovLH(
+      90.f, static_cast<float>(kShadowBufferWidth) / static_cast<float>(kShadowBufferHeight), 0.01f,
+      10.f);
+
+    // Cubemap faces are in left-handed coordinates.
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[0],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+                                   DirectX::XMMatrixRotationY(-DirectX::XM_PI / 2.f) *
+                                   shadow_proj_mat));  // Right (+x)
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[1],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+                                   DirectX::XMMatrixRotationY(DirectX::XM_PI / 2.f) *
+                                   shadow_proj_mat));  // Left (-x)
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[2],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+                                   DirectX::XMMatrixRotationX(DirectX::XM_PI / 2.f) *
+                                   shadow_proj_mat));  // Top (+y)
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[3],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+                                   DirectX::XMMatrixRotationX(-DirectX::XM_PI / 2.f) *
+                                   shadow_proj_mat));  // Bottom (-y)
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[4],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat * shadow_proj_mat));  // Front (+z)
+    DirectX::XMStoreFloat4x4(
+        &shadow_mats_[5],
+        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+                                   DirectX::XMMatrixRotationY(DirectX::XM_PI) *
+                                   shadow_proj_mat));  // Back (-z)
+  }
 }
 
 void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {

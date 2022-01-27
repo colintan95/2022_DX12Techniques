@@ -113,8 +113,14 @@ void ShadowPass::CreateResourceViews() {
     depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
 
-    app_->device_->CreateDepthStencilView(app_->frames_[i].shadow_buffer_.Get(),
-                                          &depth_stencil_desc, frames_[i].dsv_handle);
+    for (int j = 0; j < 6; ++j) {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(frames_[i].base_dsv_handle,
+                                               DsvPerFrame::Index::kDepthCubemapBase + j,
+                                               app_->dsv_descriptor_size_);
+
+      app_->device_->CreateDepthStencilView(app_->frames_[i].shadow_buffers_[j].Get(),
+                                            &depth_stencil_desc, dsv_handle);
+    }
   }
 
   {
@@ -141,7 +147,7 @@ void ShadowPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
   command_list->SetGraphicsRootDescriptorTable(0, cbv_gpu_handle_);
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle = frames_[app_->frame_index_].dsv_handle;
+  CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle = frames_[app_->frame_index_].base_dsv_handle;
 
   command_list->OMSetRenderTargets(0, nullptr, false, &dsv_handle);
 

@@ -110,7 +110,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> diffuse_gbuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> normal_gbuffer;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> shadow_buffer_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> shadow_buffers_[6];
 
     UINT64 fence_value = 0;
   };
@@ -137,6 +137,8 @@ private:
   DirectX::XMFLOAT4X4 view_mat_;
   DirectX::XMFLOAT4X4 world_view_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
+
+  DirectX::XMFLOAT4X4 shadow_mats_[6];
 
   std::vector<Material> materials_;
 

@@ -50,15 +50,15 @@ private:
   };
 
   struct Frame {
-    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE base_dsv_handle;
   };
 
   Frame frames_[kNumFrames];
 
   struct DsvPerFrame {
     struct Index {
-      static constexpr int kDepthBuffer = 0;
-      static constexpr int kMax = kDepthBuffer;
+      static constexpr int kDepthCubemapBase = 0;
+      static constexpr int kMax = 5;  // Cubemap takes six faces - index 0 to 5.
     };
     static constexpr int kNumDescriptors = Index::kMax + 1;
   };
