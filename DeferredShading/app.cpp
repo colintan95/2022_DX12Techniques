@@ -25,9 +25,9 @@ App::App(HWND window_hwnd, int window_width, int window_height)
     window_height_(window_height),
     viewport_(0.f, 0.f, static_cast<float>(window_width), static_cast<float>(window_height)),
     scissor_rect_(0, 0, window_width, window_height),
+    shadow_pass_(this),
     geometry_pass_(this),
-    lighting_pass_(this),
-    shadow_pass_(this) {}
+    lighting_pass_(this) {}
 
 void App::Initialize() {
   InitDeviceAndSwapChain();
@@ -118,11 +118,11 @@ void App::InitPipelines() {
 
   root_signature_version_ = feature_data.HighestVersion;
 
+  shadow_pass_.InitPipeline();
+
   geometry_pass_.InitPipeline();
 
   lighting_pass_.InitPipeline();
-
-  shadow_pass_.InitPipeline();
 }
 
 void App::InitDescriptorHeapsAndHandles() {
@@ -402,11 +402,11 @@ void App::InitResources() {
   ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
   ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
 
+  shadow_pass_.CreateBuffersAndUploadData();
+
   geometry_pass_.CreateBuffersAndUploadData();
 
   lighting_pass_.CreateBuffersAndUploadData();
-
-  shadow_pass_.CreateBuffersAndUploadData();
 
   ThrowIfFailed(command_list_->Close());
   ID3D12CommandList* command_lists[] = { command_list_.Get() };
@@ -415,11 +415,11 @@ void App::InitResources() {
   // TODO: Don't stall here.
   WaitForGpu();
 
-  geometry_pass_.InitResources();
+  shadow_pass_.CreateResourceViews();
 
-  lighting_pass_.InitResources();
+  geometry_pass_.CreateResourceViews();
 
-  shadow_pass_.InitResources();
+  lighting_pass_.CreateResourceViews();
 }
 
 void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {

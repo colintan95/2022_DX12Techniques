@@ -18,7 +18,7 @@ public:
 
   void InitPipeline();
   void CreateBuffersAndUploadData();
-  void InitResources();
+  void CreateResourceViews();
 
   void RenderFrame(ID3D12GraphicsCommandList* command_list);
 

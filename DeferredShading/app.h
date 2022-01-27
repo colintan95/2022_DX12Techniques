@@ -58,9 +58,9 @@ private:
 
   void WaitForGpu();
 
+  ShadowPass shadow_pass_;
   GeometryPass geometry_pass_;
   LightingPass lighting_pass_;
-  ShadowPass shadow_pass_;
 
   HWND window_hwnd_;
   int window_width_;

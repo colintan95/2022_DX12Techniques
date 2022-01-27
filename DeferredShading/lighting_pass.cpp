@@ -121,7 +121,7 @@ void LightingPass::CreateBuffersAndUploadData() {
 }
 
 
-void LightingPass::InitResources() {
+void LightingPass::CreateResourceViews() {
   for (int i = 0; i < kNumFrames; ++i) {
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(frames_[i].base_rtv_handle_,
                                              RtvPerFrame::Index::kSwapChainBuffer,

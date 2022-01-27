@@ -127,7 +127,7 @@ void GeometryPass::CreateBuffersAndUploadData() {
   }
 }
 
-void GeometryPass::InitResources() {
+void GeometryPass::CreateResourceViews() {
   for (int i = 0; i < kNumFrames; ++i) {
     CD3DX12_CPU_DESCRIPTOR_HANDLE frame_base_rtv_handle = frames_[i].base_rtv_handle_;
 

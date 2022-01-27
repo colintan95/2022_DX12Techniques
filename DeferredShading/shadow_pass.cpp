@@ -106,7 +106,7 @@ void ShadowPass::CreateBuffersAndUploadData() {
   matrix_buffer_->Unmap(0, nullptr);
 }
 
-void ShadowPass::InitResources() {
+void ShadowPass::CreateResourceViews() {
   for (int i = 0; i < kNumFrames; ++i) {
     D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
     depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
