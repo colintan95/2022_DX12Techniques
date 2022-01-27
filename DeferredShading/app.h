@@ -20,6 +20,7 @@
 #include "constants.h"
 #include "geometry_pass.h"
 #include "lighting_pass.h"
+#include "shadow_pass.h"
 
 struct Material {
   DirectX::XMFLOAT4 ambient_color;
@@ -39,6 +40,7 @@ public:
 private:
   friend class GeometryPass;
   friend class LightingPass;
+  friend class ShadowPass;
 
   void InitDeviceAndSwapChain();
 
@@ -57,8 +59,8 @@ private:
   void WaitForGpu();
 
   GeometryPass geometry_pass_;
-
   LightingPass lighting_pass_;
+  ShadowPass shadow_pass_;
 
   HWND window_hwnd_;
   int window_width_;

@@ -26,7 +26,8 @@ App::App(HWND window_hwnd, int window_width, int window_height)
     viewport_(0.f, 0.f, static_cast<float>(window_width), static_cast<float>(window_height)),
     scissor_rect_(0, 0, window_width, window_height),
     geometry_pass_(this),
-    lighting_pass_(this) {}
+    lighting_pass_(this),
+    shadow_pass_(this) {}
 
 void App::Initialize() {
   InitDeviceAndSwapChain();
@@ -120,6 +121,8 @@ void App::InitPipelines() {
   geometry_pass_.InitPipeline();
 
   lighting_pass_.InitPipeline();
+
+  shadow_pass_.InitPipeline();
 }
 
 void App::InitDescriptorHeapsAndHandles() {
@@ -367,6 +370,8 @@ void App::InitResources() {
   geometry_pass_.CreateBuffersAndUploadData();
 
   lighting_pass_.CreateBuffersAndUploadData();
+
+  shadow_pass_.CreateBuffersAndUploadData();
 
   ThrowIfFailed(command_list_->Close());
   ID3D12CommandList* command_lists[] = { command_list_.Get() };

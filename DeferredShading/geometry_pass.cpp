@@ -76,9 +76,10 @@ void GeometryPass::InitPipeline() {
 }
 
 void GeometryPass::CreateBuffersAndUploadData() {
+  // TODO: Replace the raw matrix count with a variable."
   // Must be a multiple 256 bytes.
   matrix_buffer_size_ =
-      (sizeof(DirectX::XMFLOAT4X4) * 2 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
+      (sizeof(DirectX::XMFLOAT4X4) * 3 + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) &
       ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
 
   {

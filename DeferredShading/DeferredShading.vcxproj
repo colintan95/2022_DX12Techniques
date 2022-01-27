@@ -151,6 +151,7 @@
     <ClCompile Include="geometry_pass.cpp" />
     <ClCompile Include="lighting_pass.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="shadow_pass.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app.h" />
