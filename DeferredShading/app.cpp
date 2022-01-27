@@ -34,7 +34,7 @@ void App::Initialize() {
   InitCommandAllocators();
   InitFence();
   InitPipelines();
-  InitDescriptorHeapsAndHandles();
+  InitDescriptorHeaps();
   InitResources();
 }
 
@@ -125,7 +125,7 @@ void App::InitPipelines() {
   lighting_pass_.InitPipeline();
 }
 
-void App::InitDescriptorHeapsAndHandles() {
+void App::InitDescriptorHeaps() {
   {
     D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
     rtv_heap_desc.NumDescriptors =
@@ -155,8 +155,8 @@ void App::InitDescriptorHeapsAndHandles() {
   {
     D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
     dsv_heap_desc.NumDescriptors =
-        GeometryPass::DsvStatic::kNumDescriptors +
-        ShadowPass::DsvPerFrame::kNumDescriptors * kNumFrames;
+        ShadowPass::DsvPerFrame::kNumDescriptors * kNumFrames +
+        GeometryPass::DsvStatic::kNumDescriptors;
     dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(&dsv_heap_)));
@@ -166,24 +166,22 @@ void App::InitDescriptorHeapsAndHandles() {
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
 
-    geometry_pass_.dsv_handle_ = dsv_cpu_handle;
-
-    dsv_cpu_handle.Offset(GeometryPass::DsvStatic::kNumDescriptors, dsv_descriptor_size_);
-
     for (int i = 0; i < kNumFrames; ++i) {
       shadow_pass_.frames_[i].dsv_handle = dsv_cpu_handle;
 
       dsv_cpu_handle.Offset(ShadowPass::DsvPerFrame::kNumDescriptors, dsv_descriptor_size_);
     }
+
+    geometry_pass_.dsv_handle_ = dsv_cpu_handle;
   }
 
   {
     D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_heap_desc{};
     cbv_srv_heap_desc.NumDescriptors =
+        ShadowPass::CbvStatic::kNumDescriptors +
         GeometryPass::CbvStatic::kNumDescriptors +
         LightingPass::CbvStatic::kNumDescriptors +
-        LightingPass::SrvPerFrame::kNumDescriptors * kNumFrames +
-        ShadowPass::CbvStatic::kNumDescriptors;
+        LightingPass::SrvPerFrame::kNumDescriptors * kNumFrames;
     cbv_srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     cbv_srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&cbv_srv_heap_desc, IID_PPV_ARGS(&cbv_srv_heap_)));
@@ -195,6 +193,12 @@ void App::InitDescriptorHeapsAndHandles() {
         cbv_srv_heap_->GetCPUDescriptorHandleForHeapStart());
     CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_srv_gpu_handle(
         cbv_srv_heap_->GetGPUDescriptorHandleForHeapStart());
+
+    shadow_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
+    shadow_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
+
+    cbv_srv_cpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_srv_gpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
 
     geometry_pass_.base_cbv_cpu_handle_ = cbv_srv_cpu_handle;
     geometry_pass_.base_cbv_gpu_handle_ = cbv_srv_gpu_handle;
@@ -214,12 +218,6 @@ void App::InitDescriptorHeapsAndHandles() {
 
     lighting_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
     lighting_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
-
-    cbv_srv_cpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
-    cbv_srv_gpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
-
-    shadow_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
-    shadow_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
   }
 
   {
@@ -234,17 +232,42 @@ void App::InitDescriptorHeapsAndHandles() {
     CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle(
         sampler_heap_->GetGPUDescriptorHandleForHeapStart());
 
-    sampler_cpu_handle.Offset(LightingPass::SamplerStatic::Index::kGBufferSampler,
-                              sampler_descriptor_size_);
-    sampler_gpu_handle.Offset(LightingPass::SamplerStatic::Index::kGBufferSampler,
-                              sampler_descriptor_size_);
-
     lighting_pass_.sampler_cpu_handle_ = sampler_cpu_handle;
     lighting_pass_.sampler_gpu_handle_ = sampler_gpu_handle;
   }
 }
 
 void App::InitResources() {
+  CreateSharedBuffers();
+
+  LoadModelData();
+
+  InitMatrices();
+
+  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
+  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
+
+  shadow_pass_.CreateBuffersAndUploadData();
+
+  geometry_pass_.CreateBuffersAndUploadData();
+
+  lighting_pass_.CreateBuffersAndUploadData();
+
+  ThrowIfFailed(command_list_->Close());
+  ID3D12CommandList* command_lists[] = { command_list_.Get() };
+  command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
+
+  // TODO: Don't stall here.
+  WaitForGpu();
+
+  shadow_pass_.CreateResourceViews();
+
+  geometry_pass_.CreateResourceViews();
+
+  lighting_pass_.CreateResourceViews();
+}
+
+void App::CreateSharedBuffers() {
   for (int i = 0; i < kNumFrames; ++i) {
     ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
   }
@@ -324,7 +347,9 @@ void App::InitResources() {
                                                    &clear_depth,
                                                    IID_PPV_ARGS(&frames_[i].shadow_buffer_)));
   }
+}
 
+void App::LoadModelData() {
   graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
   model_ = DirectX::Model::CreateFromSDKMESH(device_.Get(), L"cornell_box.sdkmesh");
 
@@ -372,7 +397,9 @@ void App::InitResources() {
 
     materials_.push_back(material);
   }
+}
 
+void App::InitMatrices() {
   DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
   DirectX::XMMATRIX view_mat =
       DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * DirectX::XMMatrixRotationY(DirectX::XM_PI);
@@ -398,28 +425,6 @@ void App::InitResources() {
       DirectX::XMVector4Transform(light_pos, view_mat);
 
   DirectX::XMStoreFloat4(&light_camera_pos_ , light_camera_pos);
-
-  ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
-  ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
-
-  shadow_pass_.CreateBuffersAndUploadData();
-
-  geometry_pass_.CreateBuffersAndUploadData();
-
-  lighting_pass_.CreateBuffersAndUploadData();
-
-  ThrowIfFailed(command_list_->Close());
-  ID3D12CommandList* command_lists[] = { command_list_.Get() };
-  command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
-
-  // TODO: Don't stall here.
-  WaitForGpu();
-
-  shadow_pass_.CreateResourceViews();
-
-  geometry_pass_.CreateResourceViews();
-
-  lighting_pass_.CreateResourceViews();
 }
 
 void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {

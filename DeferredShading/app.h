@@ -49,8 +49,12 @@ private:
 
   void InitPipelines();
 
-  void InitDescriptorHeapsAndHandles();
+  void InitDescriptorHeaps();
+
   void InitResources();
+  void CreateSharedBuffers();
+  void LoadModelData();
+  void InitMatrices();
 
   void UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer);
 
