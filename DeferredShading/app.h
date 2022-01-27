@@ -106,6 +106,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> diffuse_gbuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> normal_gbuffer;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource> shadow_buffer_;
+
     UINT64 fence_value = 0;
   };
 
@@ -134,6 +136,7 @@ private:
 
   std::vector<Material> materials_;
 
+  DirectX::XMFLOAT4 light_pos_;
   DirectX::XMFLOAT4 light_camera_pos_;
 };
 

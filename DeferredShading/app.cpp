@@ -154,7 +154,9 @@ void App::InitDescriptorHeapsAndHandles() {
 
   {
     D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc{};
-    dsv_heap_desc.NumDescriptors = GeometryPass::DsvStatic::kNumDescriptors;
+    dsv_heap_desc.NumDescriptors =
+        GeometryPass::DsvStatic::kNumDescriptors +
+        ShadowPass::DsvPerFrame::kNumDescriptors * kNumFrames;
     dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(&dsv_heap_)));
@@ -162,7 +164,17 @@ void App::InitDescriptorHeapsAndHandles() {
     dsv_descriptor_size_ =
         device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
-    geometry_pass_.dsv_handle_ = dsv_heap_->GetCPUDescriptorHandleForHeapStart();
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle(dsv_heap_->GetCPUDescriptorHandleForHeapStart());
+
+    geometry_pass_.dsv_handle_ = dsv_cpu_handle;
+
+    dsv_cpu_handle.Offset(GeometryPass::DsvStatic::kNumDescriptors, dsv_descriptor_size_);
+
+    for (int i = 0; i < kNumFrames; ++i) {
+      shadow_pass_.frames_[i].dsv_handle = dsv_cpu_handle;
+
+      dsv_cpu_handle.Offset(ShadowPass::DsvPerFrame::kNumDescriptors, dsv_descriptor_size_);
+    }
   }
 
   {
@@ -170,7 +182,8 @@ void App::InitDescriptorHeapsAndHandles() {
     cbv_srv_heap_desc.NumDescriptors =
         GeometryPass::CbvStatic::kNumDescriptors +
         LightingPass::CbvStatic::kNumDescriptors +
-        LightingPass::SrvPerFrame::kNumDescriptors * kNumFrames;
+        LightingPass::SrvPerFrame::kNumDescriptors * kNumFrames +
+        ShadowPass::CbvStatic::kNumDescriptors;
     cbv_srv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     cbv_srv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device_->CreateDescriptorHeap(&cbv_srv_heap_desc, IID_PPV_ARGS(&cbv_srv_heap_)));
@@ -201,6 +214,12 @@ void App::InitDescriptorHeapsAndHandles() {
 
     lighting_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
     lighting_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
+
+    cbv_srv_cpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+    cbv_srv_gpu_handle.Offset(ShadowPass::CbvStatic::kNumDescriptors, cbv_srv_descriptor_size_);
+
+    shadow_pass_.cbv_cpu_handle_ = cbv_srv_cpu_handle;
+    shadow_pass_.cbv_gpu_handle_ = cbv_srv_gpu_handle;
   }
 
   {
@@ -278,12 +297,12 @@ void App::InitResources() {
                                                    IID_PPV_ARGS(&frames_[i].normal_gbuffer)));
   }
 
-  {
-    D3D12_CLEAR_VALUE clear_value{};
-    clear_value.Format = DXGI_FORMAT_D32_FLOAT;
-    clear_value.DepthStencil.Depth = 1.0f;
-    clear_value.DepthStencil.Stencil = 0;
+  D3D12_CLEAR_VALUE clear_depth{};
+  clear_depth.Format = DXGI_FORMAT_D32_FLOAT;
+  clear_depth.DepthStencil.Depth = 1.0f;
+  clear_depth.DepthStencil.Stencil = 0;
 
+  {
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
     CD3DX12_RESOURCE_DESC resource_desc =
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, window_width_, window_height_, 1, 0, 1,
@@ -291,7 +310,19 @@ void App::InitResources() {
 
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                    &resource_desc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
-                                                   &clear_value, IID_PPV_ARGS(&depth_stencil_)));
+                                                   &clear_depth, IID_PPV_ARGS(&depth_stencil_)));
+  }
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC resource_desc =
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, kShadowBufferWidth, kShadowBufferHeight,
+                                     1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                   &resource_desc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
+                                                   &clear_depth,
+                                                   IID_PPV_ARGS(&frames_[i].shadow_buffer_)));
   }
 
   graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
@@ -359,8 +390,12 @@ void App::InitResources() {
   DirectX::XMStoreFloat4x4(&world_view_proj_mat_,
                            DirectX::XMMatrixTranspose(world_mat * view_mat * proj_mat));
 
+  DirectX::XMVECTOR light_pos = DirectX::XMVectorSet(0.f, 1.9f, 0.f, 1.f);
+
+  DirectX::XMStoreFloat4(&light_pos_ , light_pos);
+
   DirectX::XMVECTOR light_camera_pos =
-      DirectX::XMVector4Transform(DirectX::XMVectorSet(0.f, 1.9f, 0.f, 1.f), view_mat);
+      DirectX::XMVector4Transform(light_pos, view_mat);
 
   DirectX::XMStoreFloat4(&light_camera_pos_ , light_camera_pos);
 
@@ -383,6 +418,8 @@ void App::InitResources() {
   geometry_pass_.InitResources();
 
   lighting_pass_.InitResources();
+
+  shadow_pass_.InitResources();
 }
 
 void App::UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer) {
@@ -429,6 +466,8 @@ void App::RenderFrame() {
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     command_list_->ResourceBarrier(1, &barrier);
   }
+
+  shadow_pass_.RenderFrame(command_list_.Get());
 
   geometry_pass_.RenderFrame(command_list_.Get());
 

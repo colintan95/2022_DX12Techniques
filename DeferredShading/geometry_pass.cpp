@@ -218,9 +218,7 @@ void GeometryPass::InitResources() {
 }
 
 void GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
-
   command_list->SetPipelineState(pipeline_.Get());
-
   command_list->SetGraphicsRootSignature(root_signature_.Get());
 
   ID3D12DescriptorHeap* heaps[] = { app_->cbv_srv_heap_.Get() };
