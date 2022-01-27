@@ -137,11 +137,11 @@ private:
     CD3DX12_CPU_DESCRIPTOR_HANDLE base_srv_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE base_srv_gpu_handle_;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
-
     CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
     CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> light_pos_buffer_;
     UINT light_pos_buffer_size_ = 0;

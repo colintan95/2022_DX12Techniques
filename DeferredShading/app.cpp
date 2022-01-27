@@ -154,8 +154,8 @@ void App::GeometryPass::InitPipeline() {
   D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
      {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
       0},
-     {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-      0}
+     {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, sizeof(float) * 3,
+      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
   };
 
   D3D12_INPUT_LAYOUT_DESC input_layout_desc{};
@@ -215,7 +215,8 @@ void App::LightingPass::InitPipeline() {
 
   D3D12_INPUT_ELEMENT_DESC input_element_descs[] = {
      {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, sizeof(float) * 2,
+      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
   };
 
   D3D12_INPUT_LAYOUT_DESC input_layout_desc{};
@@ -838,7 +839,11 @@ void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
   const float clear_color[] = {0.f, 0.f, 0.f, 1.f};
   command_list->ClearRenderTargetView(color_rtv_handle, clear_color, 0, nullptr);
-  command_list->ClearRenderTargetView(pos_rtv_handle, clear_color, 0, nullptr);
+  command_list->ClearRenderTargetView(diffuse_rtv_handle, clear_color, 0, nullptr);
+
+  const float clear_pos[] = {0.f, 0.f, 0.f, 1.f};
+  command_list->ClearRenderTargetView(pos_rtv_handle, clear_pos, 0, nullptr);
+  command_list->ClearRenderTargetView(normal_rtv_handle, clear_pos, 0, nullptr);
 
   command_list->ClearDepthStencilView(dsv_handle_, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
@@ -853,8 +858,6 @@ void App::GeometryPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
     command_list->DrawIndexedInstanced(args.index_count, 1, args.start_index, args.vertex_offset,
                                        0);
   }
-
-  command_list->DrawInstanced(3, 1, 0, 0);
 }
 
 void App::LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
