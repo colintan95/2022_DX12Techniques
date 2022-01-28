@@ -246,7 +246,7 @@ void LightingPass::CreateResourceViews() {
                                                  app_->cbv_srv_descriptor_size_);
 
     D3D12_SAMPLER_DESC sampler_desc{};
-    sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+    sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;

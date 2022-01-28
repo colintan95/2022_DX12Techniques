@@ -71,7 +71,6 @@ void ShadowPass::InitPipeline() {
   ThrowIfFailed(app_->device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_)));
 }
 
-
 void ShadowPass::CreateBuffersAndUploadData() {
   // Must be a multiple 256 bytes.
   matrix_buffer_size_ =

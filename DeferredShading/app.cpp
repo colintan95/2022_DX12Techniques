@@ -400,9 +400,16 @@ void App::LoadModelData() {
 }
 
 void App::InitMatrices() {
+  camera_yaw_ = DirectX::XM_PI;
+
+  DirectX::XMMATRIX camera_view_mat =
+      DirectX::XMMatrixRotationY(-camera_yaw_) *
+      DirectX::XMMatrixRotationX(-camera_pitch_) *
+      DirectX::XMMatrixRotationZ(-camera_roll_);
+
   DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
   DirectX::XMMATRIX view_mat =
-      DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * DirectX::XMMatrixRotationY(DirectX::XM_PI);
+      DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * camera_view_mat;
   DirectX::XMMATRIX proj_mat =
       DirectX::XMMatrixPerspectiveFovLH(
           DirectX::XM_PI / 4.f,

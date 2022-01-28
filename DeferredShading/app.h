@@ -132,6 +132,10 @@ private:
     uint32_t material_index;
   };
 
+  float camera_yaw_ = 0.f;
+  float camera_pitch_ = 0.f;
+  float camera_roll_ = 0.f;
+
   std::vector<DrawCallArgs> draw_call_args_;
 
   DirectX::XMFLOAT4X4 world_mat_;
