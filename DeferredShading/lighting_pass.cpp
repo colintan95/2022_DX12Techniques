@@ -16,9 +16,9 @@ using DX::ThrowIfFailed;
 
 void LightingPass::InitPipeline() {
   CD3DX12_DESCRIPTOR_RANGE1 ranges[3] = {};
-  ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0);
+  ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0);
   ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
-  ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
+  ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 2, 0, 0);
 
   CD3DX12_ROOT_PARAMETER1 root_params[3] = {};
   root_params[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
@@ -139,12 +139,12 @@ void LightingPass::CreateResourceViews() {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
                                                SrvPerFrame::Index::kAmbientGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
-      // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
       srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
       srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-      srv_desc.Texture2D.MipLevels = -1;
+      srv_desc.Texture2D.MipLevels = 1;
+      srv_desc.Texture2D.MostDetailedMip = 0;
 
       app_->device_->CreateShaderResourceView(app_->frames_[i].gbuffer.Get(), &srv_desc,
                                               srv_handle);
@@ -154,12 +154,12 @@ void LightingPass::CreateResourceViews() {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
                                                SrvPerFrame::Index::kPositionGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
-      // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
       srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
       srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-      srv_desc.Texture2D.MipLevels = -1;
+      srv_desc.Texture2D.MipLevels = 1;
+      srv_desc.Texture2D.MostDetailedMip = 0;
 
       app_->device_->CreateShaderResourceView(app_->frames_[i].pos_gbuffer.Get(), &srv_desc,
                                               srv_handle);
@@ -169,12 +169,12 @@ void LightingPass::CreateResourceViews() {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
                                                SrvPerFrame::Index::kDiffuseGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
-      // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
       srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
       srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-      srv_desc.Texture2D.MipLevels = -1;
+      srv_desc.Texture2D.MipLevels = 1;
+      srv_desc.Texture2D.MostDetailedMip = 0;
 
       app_->device_->CreateShaderResourceView(app_->frames_[i].diffuse_gbuffer.Get(), &srv_desc,
                                               srv_handle);
@@ -184,14 +184,29 @@ void LightingPass::CreateResourceViews() {
       CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
                                                SrvPerFrame::Index::kNormalGbufferTexture,
                                                app_->cbv_srv_descriptor_size_);
-      // TODO: Fix the mip levels here.
       D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
       srv_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
       srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
       srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-      srv_desc.Texture2D.MipLevels = -1;
+      srv_desc.Texture2D.MipLevels = 1;
+      srv_desc.Texture2D.MostDetailedMip = 0;
 
       app_->device_->CreateShaderResourceView(app_->frames_[i].normal_gbuffer.Get(), &srv_desc,
+                                              srv_handle);
+    }
+
+    {
+      CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle(frame_base_srv_cpu_handle,
+                                               SrvPerFrame::Index::kShadowCubemapTexture,
+                                               app_->cbv_srv_descriptor_size_);
+      D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+      srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
+      srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+      srv_desc.Texture2D.MipLevels = 1;
+      srv_desc.Texture2D.MostDetailedMip = 0;
+
+      app_->device_->CreateShaderResourceView(app_->frames_[i].shadow_cubemap.Get(), &srv_desc,
                                               srv_handle);
     }
   }
@@ -202,28 +217,57 @@ void LightingPass::CreateResourceViews() {
 
   app_->device_->CreateConstantBufferView(&cbv_desc, cbv_cpu_handle_);
 
-  D3D12_SAMPLER_DESC sampler_desc{};
-  sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-  sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-  sampler_desc.MinLOD = 0;
-  sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
-  sampler_desc.MipLODBias = 0.0f;
-  sampler_desc.MaxAnisotropy = 1;
-  sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-  sampler_desc.BorderColor[0] = 0;
-  sampler_desc.BorderColor[1] = 0;
-  sampler_desc.BorderColor[2] = 0;
-  sampler_desc.BorderColor[3] = 0;
+  {
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle(base_sampler_cpu_handle_,
+                                                 SamplerStatic::Index::kGBufferSampler,
+                                                 app_->cbv_srv_descriptor_size_);
 
-  app_->device_->CreateSampler(&sampler_desc, sampler_cpu_handle_);
+    D3D12_SAMPLER_DESC sampler_desc{};
+    sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler_desc.MinLOD = 0;
+    sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
+    sampler_desc.MipLODBias = 0.0f;
+    sampler_desc.MaxAnisotropy = 1;
+    sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    sampler_desc.BorderColor[0] = 0;
+    sampler_desc.BorderColor[1] = 0;
+    sampler_desc.BorderColor[2] = 0;
+    sampler_desc.BorderColor[3] = 0;
+
+    app_->device_->CreateSampler(&sampler_desc, sampler_handle);
+  }
+
+  {
+    CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_handle(base_sampler_cpu_handle_,
+                                                 SamplerStatic::Index::kShadowCubemapSampler,
+                                                 app_->cbv_srv_descriptor_size_);
+
+    D3D12_SAMPLER_DESC sampler_desc{};
+    sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+    sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler_desc.MinLOD = 0.f;
+    sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
+    sampler_desc.MipLODBias = 0.0f;
+    sampler_desc.MaxAnisotropy = 1;
+    sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    sampler_desc.BorderColor[0] = 0;
+    sampler_desc.BorderColor[1] = 0;
+    sampler_desc.BorderColor[2] = 0;
+    sampler_desc.BorderColor[3] = 0;
+
+    app_->device_->CreateSampler(&sampler_desc, sampler_handle);
+  }
 }
 
 
 void LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   {
-    CD3DX12_RESOURCE_BARRIER barriers[4] = {};
+    CD3DX12_RESOURCE_BARRIER barriers[5] = {};
 
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].gbuffer.Get(),
@@ -237,6 +281,9 @@ void LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
     barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].normal_gbuffer.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].shadow_cubemap.Get(),
+        D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
     command_list->ResourceBarrier(_countof(barriers), barriers);
   }
@@ -252,7 +299,7 @@ void LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
 
   command_list->SetGraphicsRootDescriptorTable(0, frames_[app_->frame_index_].base_srv_gpu_handle_);
   command_list->SetGraphicsRootDescriptorTable(1, cbv_gpu_handle);
-  command_list->SetGraphicsRootDescriptorTable(2, sampler_gpu_handle_);
+  command_list->SetGraphicsRootDescriptorTable(2, base_sampler_gpu_handle_);
 
   command_list->RSSetViewports(1, &app_->viewport_);
   command_list->RSSetScissorRects(1, &app_->scissor_rect_);
@@ -275,7 +322,7 @@ void LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
   command_list->DrawInstanced(4, 1, 0, 0);
 
   {
-    CD3DX12_RESOURCE_BARRIER barriers[4] = {};
+    CD3DX12_RESOURCE_BARRIER barriers[5] = {};
 
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].gbuffer.Get(),
@@ -289,6 +336,9 @@ void LightingPass::RenderFrame(ID3D12GraphicsCommandList* command_list) {
     barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
         app_->frames_[app_->frame_index_].normal_gbuffer.Get(),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    barriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(
+        app_->frames_[app_->frame_index_].shadow_cubemap.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
     command_list->ResourceBarrier(_countof(barriers), barriers);
   }

@@ -232,8 +232,8 @@ void App::InitDescriptorHeaps() {
     CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle(
         sampler_heap_->GetGPUDescriptorHandleForHeapStart());
 
-    lighting_pass_.sampler_cpu_handle_ = sampler_cpu_handle;
-    lighting_pass_.sampler_gpu_handle_ = sampler_gpu_handle;
+    lighting_pass_.base_sampler_cpu_handle_ = sampler_cpu_handle;
+    lighting_pass_.base_sampler_gpu_handle_ = sampler_gpu_handle;
   }
 }
 
@@ -340,14 +340,12 @@ void App::CreateSharedBuffers() {
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
     CD3DX12_RESOURCE_DESC resource_desc =
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, kShadowBufferWidth, kShadowBufferHeight,
-                                     1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+                                     6, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
-    for (int j = 0; j < 6; ++j) {
-      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                    &resource_desc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                                    &clear_depth,
-                                                   IID_PPV_ARGS(&frames_[i].shadow_buffers_[j])));
-    }
+                                                   IID_PPV_ARGS(&frames_[i].shadow_cubemap)));
   }
 }
 
@@ -407,8 +405,8 @@ void App::InitMatrices() {
       DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * DirectX::XMMatrixRotationY(DirectX::XM_PI);
   DirectX::XMMATRIX proj_mat =
       DirectX::XMMatrixPerspectiveFovLH(
-          45.f, static_cast<float>(window_width_) / static_cast<float>(window_height_), 0.1f,
-          1000.f);
+          DirectX::XM_PI / 4.f,
+          static_cast<float>(window_width_) / static_cast<float>(window_height_), 0.1f, 1000.f);
 
   DirectX::XMStoreFloat4x4(&world_mat_, DirectX::XMMatrixTranspose(world_mat));
 
@@ -425,7 +423,8 @@ void App::InitMatrices() {
     DirectX::XMMATRIX light_pos_inverse_mat =
         DirectX::XMMatrixTranslation(-light_pos_.x, -light_pos_.y, -light_pos_.z);
     DirectX::XMMATRIX shadow_proj_mat = DirectX::XMMatrixPerspectiveFovLH(
-      90.f, static_cast<float>(kShadowBufferWidth) / static_cast<float>(kShadowBufferHeight), 0.01f,
+      DirectX::XM_PI / 2.f,
+      static_cast<float>(kShadowBufferWidth) / static_cast<float>(kShadowBufferHeight), 0.05f,
       10.f);
 
     // Cubemap faces are in left-handed coordinates.

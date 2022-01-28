@@ -97,17 +97,19 @@ void ShadowPass::CreateBuffersAndUploadData() {
 
 void ShadowPass::CreateResourceViews() {
   for (int i = 0; i < kNumFrames; ++i) {
-    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
-    depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
-    depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
-
     for (int j = 0; j < 6; ++j) {
+      D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_desc{};
+      depth_stencil_desc.Format = DXGI_FORMAT_D32_FLOAT;
+      depth_stencil_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+      depth_stencil_desc.Flags = D3D12_DSV_FLAG_NONE;
+      depth_stencil_desc.Texture2DArray.FirstArraySlice = j;
+      depth_stencil_desc.Texture2DArray.ArraySize = 1;
+
       CD3DX12_CPU_DESCRIPTOR_HANDLE dsv_handle(frames_[i].base_dsv_handle,
                                                DsvPerFrame::Index::kDepthCubemapBase + j,
                                                app_->dsv_descriptor_size_);
 
-      app_->device_->CreateDepthStencilView(app_->frames_[i].shadow_buffers_[j].Get(),
+      app_->device_->CreateDepthStencilView(app_->frames_[i].shadow_cubemap.Get(),
                                             &depth_stencil_desc, dsv_handle);
     }
   }

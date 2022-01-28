@@ -13,7 +13,7 @@ PSInput main(float3 position : POSITION, float3 normal : NORMAL) {
 	PSInput result;
 
 	result.position = mul(float4(position, 1.f), world_view_proj_mat);
-	result.world_pos = mul(float4(position, 1.f), world_mat);
+	result.world_pos = mul(float4(position, 1.f), world_mat).xyz;
 	result.normal = normal;
 
 	return result;

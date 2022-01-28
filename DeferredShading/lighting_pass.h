@@ -35,8 +35,8 @@ private:
   CD3DX12_CPU_DESCRIPTOR_HANDLE cbv_cpu_handle_;
   CD3DX12_GPU_DESCRIPTOR_HANDLE cbv_gpu_handle_;
 
-  CD3DX12_CPU_DESCRIPTOR_HANDLE sampler_cpu_handle_;
-  CD3DX12_GPU_DESCRIPTOR_HANDLE sampler_gpu_handle_;
+  CD3DX12_CPU_DESCRIPTOR_HANDLE base_sampler_cpu_handle_;
+  CD3DX12_GPU_DESCRIPTOR_HANDLE base_sampler_gpu_handle_;
 
   struct CbvStatic {
     struct Index {
@@ -49,7 +49,8 @@ private:
   struct SamplerStatic {
     struct Index {
       static constexpr int kGBufferSampler = 0;
-      static constexpr int kMax = kGBufferSampler;
+      static constexpr int kShadowCubemapSampler = 1;
+      static constexpr int kMax = kShadowCubemapSampler;
     };
     static constexpr int kNumDescriptors = Index::kMax + 1;
   };
@@ -77,7 +78,8 @@ private:
       static constexpr int kPositionGbufferTexture = 1;
       static constexpr int kDiffuseGbufferTexture = 2;
       static constexpr int kNormalGbufferTexture = 3;
-      static constexpr int kMax = kNormalGbufferTexture;
+      static constexpr int kShadowCubemapTexture = 4;
+      static constexpr int kMax = kShadowCubemapTexture;
     };
     static constexpr int kNumDescriptors = Index::kMax + 1;
   };

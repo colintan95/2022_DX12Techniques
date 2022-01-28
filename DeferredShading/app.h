@@ -110,7 +110,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> diffuse_gbuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> normal_gbuffer;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> shadow_buffers_[6];
+    Microsoft::WRL::ComPtr<ID3D12Resource> shadow_cubemap;
 
     UINT64 fence_value = 0;
   };
