@@ -138,7 +138,7 @@ private:
 
   std::vector<DrawCallArgs> draw_call_args_;
 
-  DirectX::XMFLOAT4X4 world_mat_;
+  DirectX::XMFLOAT4X4 world_view_mat_;
   DirectX::XMFLOAT4X4 world_view_proj_mat_;
 
   DirectX::XMFLOAT4X4 shadow_mats_[6];
@@ -146,7 +146,7 @@ private:
   std::vector<Material> materials_;
 
   DirectX::XMFLOAT4 light_pos_;
-  DirectX::XMFLOAT4 light_camera_pos_;
+  DirectX::XMFLOAT4 light_view_pos_;
 };
 
 #endif  // APP_H_

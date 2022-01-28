@@ -11,15 +11,15 @@ Texture2D normal_gbuf_tex : register(t3);
 TextureCube shadow_cubemap_tex : register(t4);
 
 cbuffer LightPosBuffer : register(b0) {
-  float4 light_pos;
+  float4 light_view_pos;
 }
 
 SamplerState gbuf_sampler : register(s0);
 SamplerState shadow_cubemap_sampler : register(s1);
 
 float4 main(PSInput input) : SV_TARGET {
-  float3 pos = pos_gbuf_tex.Sample(gbuf_sampler, input.texcoord).xyz;
-   float3 light_vec = light_pos.xyz - pos;
+  float3 view_pos = pos_gbuf_tex.Sample(gbuf_sampler, input.texcoord).xyz;
+   float3 light_vec = light_view_pos.xyz - view_pos;
 
    float3 normal = normalize(normal_gbuf_tex.Sample(gbuf_sampler, input.texcoord).xyz);
 
@@ -40,7 +40,7 @@ float4 main(PSInput input) : SV_TARGET {
   float depth_bias = (1.f - depth) * (0.1f + (1.f - max_component) * 0.1f);
   depth = clamp(depth - depth_bias, 0.f, 1.f);
 
-  float3 cubemap_coord = normalize(pos - light_pos.xyz);
+  float3 cubemap_coord = normalize(view_pos - light_view_pos.xyz);
 
   float shadow_tex_depth = shadow_cubemap_tex.Sample(shadow_cubemap_sampler, cubemap_coord).r;
 

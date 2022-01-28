@@ -415,7 +415,7 @@ void App::InitMatrices() {
           DirectX::XM_PI / 4.f,
           static_cast<float>(window_width_) / static_cast<float>(window_height_), 0.1f, 1000.f);
 
-  DirectX::XMStoreFloat4x4(&world_mat_, DirectX::XMMatrixTranspose(world_mat));
+  DirectX::XMStoreFloat4x4(&world_view_mat_, DirectX::XMMatrixTranspose(world_mat * view_mat));
 
   // DirectXMath stores the matrix in row-major order while hlsl needs the matrix to be stored in
   // column-major order. So, we apply a transpose when storing the matrix in the buffer.
@@ -426,41 +426,46 @@ void App::InitMatrices() {
 
   DirectX::XMStoreFloat4(&light_pos_ , light_pos);
 
+  DirectX::XMVECTOR light_view_pos = DirectX::XMVector4Transform(light_pos, view_mat);
+
+  DirectX::XMStoreFloat4(&light_view_pos_ , light_view_pos);
+
   {
-    DirectX::XMMATRIX light_pos_inverse_mat =
-        DirectX::XMMatrixTranslation(-light_pos_.x, -light_pos_.y, -light_pos_.z);
+    DirectX::XMMATRIX light_view_pos_inverse_mat =
+        DirectX::XMMatrixTranslation(-light_view_pos_.x, -light_view_pos_.y, -light_view_pos_.z);
     DirectX::XMMATRIX shadow_proj_mat = DirectX::XMMatrixPerspectiveFovLH(
       DirectX::XM_PI / 2.f,
       static_cast<float>(kShadowBufferWidth) / static_cast<float>(kShadowBufferHeight), 0.05f,
       10.f);
 
-    // Cubemap faces are in left-handed coordinates.
+    // Only apply these matrices to vertices in view space.
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[0],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
                                    DirectX::XMMatrixRotationY(-DirectX::XM_PI / 2.f) *
                                    shadow_proj_mat));  // Right (+x)
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[1],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
                                    DirectX::XMMatrixRotationY(DirectX::XM_PI / 2.f) *
                                    shadow_proj_mat));  // Left (-x)
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[2],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
                                    DirectX::XMMatrixRotationX(DirectX::XM_PI / 2.f) *
                                    shadow_proj_mat));  // Top (+y)
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[3],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
                                    DirectX::XMMatrixRotationX(-DirectX::XM_PI / 2.f) *
                                    shadow_proj_mat));  // Bottom (-y)
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[4],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat * shadow_proj_mat));  // Front (+z)
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
+                                   shadow_proj_mat));  // Front (+z)
     DirectX::XMStoreFloat4x4(
         &shadow_mats_[5],
-        DirectX::XMMatrixTranspose(light_pos_inverse_mat *
+        DirectX::XMMatrixTranspose(light_view_pos_inverse_mat *
                                    DirectX::XMMatrixRotationY(DirectX::XM_PI) *
                                    shadow_proj_mat));  // Back (-z)
   }
