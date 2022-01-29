@@ -55,6 +55,8 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12Resource> bottom_level_acceleration_structure_;
    Microsoft::WRL::ComPtr<ID3D12Resource> top_level_acceleration_structure_;
+
+   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> dxr_command_list_;
 };
 
 #endif  // APP_H_

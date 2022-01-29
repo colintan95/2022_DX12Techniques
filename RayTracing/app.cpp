@@ -60,6 +60,8 @@ void App::Initialize() {
                                              command_allocator_.Get(), nullptr,
                                              IID_PPV_ARGS(&command_list_)));
 
+    ThrowIfFailed(command_list_.As(&dxr_command_list_));
+
     ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
                                        IID_PPV_ARGS(&fence_)));
     ++latest_fence_value_;
@@ -177,7 +179,7 @@ void App::Initialize() {
     geometry_desc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
     geometry_desc.Triangles.Transform3x4 = 0;
     geometry_desc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-    geometry_desc.Triangles.VertexCount = 9;
+    geometry_desc.Triangles.VertexCount = 3;
     geometry_desc.Triangles.VertexBuffer.StartAddress = vertex_buffer_->GetGPUVirtualAddress();
     geometry_desc.Triangles.VertexBuffer.StrideInBytes = sizeof(float) * 3;
     geometry_desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
@@ -213,10 +215,10 @@ void App::Initialize() {
                                             top_level_prebuild_info.ResultDataMaxSizeInBytes),
                                         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
-      ThrowIfFailed(device_->CreateCommittedResource(
-          &heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc,
-          D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr,
-          IID_PPV_ARGS(&scratch_resource)));
+      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                     &buffer_desc,
+                                                     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                     IID_PPV_ARGS(&scratch_resource)));
     }
 
     {
@@ -243,8 +245,6 @@ void App::Initialize() {
           IID_PPV_ARGS(&top_level_acceleration_structure_)));
     }
 
-    ComPtr<ID3D12Resource> instance_desc_buffer;
-
     D3D12_RAYTRACING_INSTANCE_DESC instance_desc{};
     instance_desc.Transform[0][0] = 1;
     instance_desc.Transform[1][1] = 1;
@@ -252,6 +252,49 @@ void App::Initialize() {
     instance_desc.AccelerationStructure =
         bottom_level_acceleration_structure_->GetGPUVirtualAddress();
     // UploadDataToBuffer(&instance_desc, sizeof(instance_desc), instance_desc_buffer.Get());
+
+    ComPtr<ID3D12Resource> instance_desc_buffer;
+
+    {
+      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+      CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(instance_desc));
+
+      ThrowIfFailed(device_->CreateCommittedResource(
+          &heap_props, D3D12_HEAP_FLAG_NONE, &buffer_desc, D3D12_RESOURCE_STATE_GENERIC_READ,
+          nullptr, IID_PPV_ARGS(&instance_desc_buffer)));
+
+      D3D12_RAYTRACING_INSTANCE_DESC* buffer_ptr;
+      instance_desc_buffer->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
+
+      *buffer_ptr = instance_desc;
+
+      instance_desc_buffer->Unmap(0, nullptr);
+    }
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottom_level_desc{};
+    bottom_level_desc.Inputs = bottom_level_inputs;
+    bottom_level_desc.ScratchAccelerationStructureData = scratch_resource->GetGPUVirtualAddress();
+    bottom_level_desc.DestAccelerationStructureData =
+        bottom_level_acceleration_structure_->GetGPUVirtualAddress();
+
+    top_level_inputs.InstanceDescs = instance_desc_buffer->GetGPUVirtualAddress();
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC top_level_desc{};
+    top_level_desc.Inputs = top_level_inputs;
+    top_level_desc.ScratchAccelerationStructureData = scratch_resource->GetGPUVirtualAddress();
+    top_level_desc.DestAccelerationStructureData =
+        top_level_acceleration_structure_->GetGPUVirtualAddress();
+
+    dxr_command_list_->BuildRaytracingAccelerationStructure(&bottom_level_desc, 0, nullptr);
+
+    {
+      CD3DX12_RESOURCE_BARRIER barrier =
+          CD3DX12_RESOURCE_BARRIER::UAV(bottom_level_acceleration_structure_.Get());
+
+      command_list_->ResourceBarrier(1, &barrier);
+    }
+
+    dxr_command_list_->BuildRaytracingAccelerationStructure(&top_level_desc, 0, nullptr);
 
     ThrowIfFailed(command_list_->Close());
     ID3D12CommandList* command_lists[] = { command_list_.Get() };
