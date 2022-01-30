@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "constants.h"
 #include "dx_includes.h"
 #include "raytracing_shader.h"
 
@@ -19,7 +20,7 @@ public:
 private:
   void InitDeviceAndSwapChain();
 
-  void UploadDataToBuffer(const void* data, UINT64 data_size, ID3D12Resource* dst_buffer);
+  void MoveToNextFrame();
 
   void WaitForGpu();
 
@@ -33,7 +34,6 @@ private:
    Microsoft::WRL::ComPtr<ID3D12CommandQueue> command_queue_;
    Microsoft::WRL::ComPtr<IDXGISwapChain3> swap_chain_;
 
-   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator_;
    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
 
    Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
@@ -52,8 +52,6 @@ private:
    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
    Microsoft::WRL::ComPtr<ID3D12Resource> index_buffer_;
 
-   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> upload_buffers_;
-
    Microsoft::WRL::ComPtr<ID3D12Resource> bottom_level_acceleration_structure_;
    Microsoft::WRL::ComPtr<ID3D12Resource> top_level_acceleration_structure_;
 
@@ -62,12 +60,22 @@ private:
    RayGenConstantBuffer ray_gen_constants_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table;
+   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table_;
    Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
 
-   D3D12_CPU_DESCRIPTOR_HANDLE uav_handle_;
+   D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
+
+   struct Frame {
+     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
+
+     Microsoft::WRL::ComPtr<ID3D12Resource> swap_chain_buffer;
+
+     UINT64 fence_value = 0;
+   };
+
+   Frame frames_[kNumFrames];
 };
 
 #endif  // APP_H_
