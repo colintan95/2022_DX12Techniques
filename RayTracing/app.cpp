@@ -14,23 +14,24 @@ UINT Align(UINT size, UINT alignment) {
     return (size + (alignment - 1)) & ~(alignment - 1);
 }
 
+#define SizeOfInUint32(obj) ((sizeof(obj) - 1) / sizeof(UINT32) + 1)
+
 }  // namespace
 
 App::App(HWND hwnd) : hwnd_(hwnd) {
   ray_gen_constants_.viewport = { -1.f, -1.f, 1.f, 1.f };
 
   float aspect_ratio = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
-  float border = 0.1f;
 
-  if (kWindowWidth < kWindowHeight) {
+  if (aspect_ratio > 1.f) {
     ray_gen_constants_.stencil = {
-      -1.f + border, -1.f + border * aspect_ratio,
-      1.f - border, 1.f - border * aspect_ratio
+      -1.f, -1.f / aspect_ratio,
+      1.f, 1.f / aspect_ratio
     };
   } else {
     ray_gen_constants_.stencil = {
-      -1.f + border / aspect_ratio, -1.f + border,
-      1.f - border / aspect_ratio, 1.f - border
+      -aspect_ratio, -1.f,
+      aspect_ratio, 1.f
     };
   }
 }
@@ -65,7 +66,7 @@ void App::Initialize() {
 
   {
     CD3DX12_ROOT_PARAMETER1 root_param{};
-    root_param.InitAsConstants(0, 0, 0);
+    root_param.InitAsConstants(SizeOfInUint32(ray_gen_constants_), 0, 0);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
@@ -162,11 +163,10 @@ void App::Initialize() {
   }
 
   {
-    // In screen space - right handed coordinates.
     float vertices[] = {
-      0.f, -0.5f, 1.f,
-      -0.5f, 0.5f, 1.f,
-      0.5f, 0.5f, 1.f
+      0.f, -0.5f, 2.f,
+      -0.5f, 0.5f, 2.f,
+      0.5f, 0.5f, 2.f
     };
 
     UINT16 indices[] = { 0, 1, 2 };
