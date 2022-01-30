@@ -8,6 +8,14 @@
 using Microsoft::WRL::ComPtr;
 using DX::ThrowIfFailed;
 
+namespace {
+
+UINT Align(UINT size, UINT alignment) {
+    return (size + (alignment - 1)) & ~(alignment - 1);
+}
+
+}  // namespace
+
 App::App(HWND hwnd) : hwnd_(hwnd) {}
 
 void App::Initialize() {
@@ -301,6 +309,97 @@ void App::Initialize() {
     command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
 
     WaitForGpu();
+  }
+
+  {
+    ComPtr<ID3D12StateObjectProperties> state_object_props;
+    ThrowIfFailed(dxr_state_object_.As(&state_object_props));
+
+    void* ray_gen_shader_identifier = state_object_props->GetShaderIdentifier(kRayGenShaderName);
+    void* hit_group_shader_identifier = state_object_props->GetShaderIdentifier(kHitGroupName);
+    void* miss_shader_identifier = state_object_props->GetShaderIdentifier(kMissShaderName);
+
+    UINT shader_identifier_size = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+    {
+      UINT shader_record_size = shader_identifier_size + sizeof(RayGenConstantBuffer);
+
+      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+      CD3DX12_RESOURCE_DESC buffer_desc =
+          CD3DX12_RESOURCE_DESC::Buffer(Align(shader_record_size,
+                                              D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+
+      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                     &buffer_desc,
+                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                     IID_PPV_ARGS(&ray_gen_shader_table_)));
+
+      uint8_t* buffer_ptr;
+      ThrowIfFailed(ray_gen_shader_table_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+
+      memcpy(buffer_ptr, ray_gen_shader_identifier, shader_identifier_size);
+      buffer_ptr += shader_identifier_size;
+      memcpy(buffer_ptr, &ray_gen_constants_, sizeof(RayGenConstantBuffer));
+
+      ray_gen_shader_table_->Unmap(0, nullptr);
+    }
+
+    {
+      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+      CD3DX12_RESOURCE_DESC buffer_desc =
+          CD3DX12_RESOURCE_DESC::Buffer(Align(shader_identifier_size,
+                                              D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+
+      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                     &buffer_desc,
+                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                     IID_PPV_ARGS(&hit_group_shader_table)));
+
+      uint8_t* buffer_ptr;
+      ThrowIfFailed(hit_group_shader_table->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+
+      memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
+
+      hit_group_shader_table->Unmap(0, nullptr);
+    }
+
+    {
+      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+      CD3DX12_RESOURCE_DESC buffer_desc =
+          CD3DX12_RESOURCE_DESC::Buffer(Align(shader_identifier_size,
+                                              D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+
+      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                     &buffer_desc,
+                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                     IID_PPV_ARGS(&miss_shader_table_)));
+
+      uint8_t* buffer_ptr;
+      ThrowIfFailed(miss_shader_table_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+
+      memcpy(buffer_ptr, miss_shader_identifier, shader_identifier_size);
+
+      miss_shader_table_->Unmap(0, nullptr);
+    }
+  }
+
+  {
+    CD3DX12_RESOURCE_DESC output_desc =
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, kWindowWidth, kWindowHeight, 1, 1,
+                                     1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &output_desc,
+                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                   IID_PPV_ARGS(&raytracing_output_)));
+
+    uav_handle_ = descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
+    uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    device_->CreateUnorderedAccessView(raytracing_output_.Get(), nullptr, &uav_desc, uav_handle_);
   }
 }
 

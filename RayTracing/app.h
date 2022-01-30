@@ -1,9 +1,10 @@
 #ifndef APP_H_
 #define APP_H_
 
-#include "dx_includes.h"
-
 #include <vector>
+
+#include "dx_includes.h"
+#include "raytracing_shader.h"
 
 class App {
 public:
@@ -57,6 +58,16 @@ private:
    Microsoft::WRL::ComPtr<ID3D12Resource> top_level_acceleration_structure_;
 
    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> dxr_command_list_;
+
+   RayGenConstantBuffer ray_gen_constants_;
+
+   Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table;
+   Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
+
+   Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
+
+   D3D12_CPU_DESCRIPTOR_HANDLE uav_handle_;
 };
 
 #endif  // APP_H_

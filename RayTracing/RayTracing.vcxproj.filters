@@ -35,6 +35,9 @@
     <ClInclude Include="dx_includes.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="raytracing_shader.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="raytracing.hlsl">

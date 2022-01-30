@@ -156,6 +156,7 @@
     <ClInclude Include="app.h" />
     <ClInclude Include="constants.h" />
     <ClInclude Include="dx_includes.h" />
+    <ClInclude Include="raytracing_shader.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DirectXTK12\DirectXTK_Desktop_2019_Win10.vcxproj">
