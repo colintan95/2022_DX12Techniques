@@ -3,15 +3,17 @@ struct Material {
   float4 diffuse_color;
 };
 
-// TODO: Deal with constant register limit. Setting the number of elements higher (e.g. to 16)
-// causes the shader to exceed the register limit.
-cbuffer MaterialsBuffer : register(b1) {
-  Material materials[12];
+struct Materials {
+  Material materials[32];
 };
 
-cbuffer MaterialIndex : register(b2) {
-  uint material_index;
-}
+ConstantBuffer<Materials> materials : register(b1);
+
+struct MaterialIndex {
+  uint index;
+};
+
+ConstantBuffer<uint> material_index : register(b2);
 
 struct PSInput {
 	float4 position : SV_POSITION;
@@ -29,9 +31,11 @@ struct PSOutput {
 PSOutput main(PSInput input) {
   PSOutput result;
 
-  result.color = float4((materials[material_index].ambient_color).rgb, 1.f);
+  Material material = materials.materials[material_index.index];
+
+  result.color = float4((material.ambient_color).rgb, 1.f);
   result.position = float4(input.view_pos, 1.f);
-  result.diffuse = float4((materials[material_index].diffuse_color).rgb, 1.f);
+  result.diffuse = float4((material.diffuse_color).rgb, 1.f);
   result.normal = float4(input.normal, 0.f);
 
   return result;
