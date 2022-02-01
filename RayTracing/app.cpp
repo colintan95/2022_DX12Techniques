@@ -19,21 +19,12 @@ UINT Align(UINT size, UINT alignment) {
 }  // namespace
 
 App::App(HWND hwnd) : hwnd_(hwnd) {
-  ray_gen_constants_.viewport = { -1.f, -1.f, 1.f, 1.f };
-
   float aspect_ratio = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
 
-  if (aspect_ratio > 1.f) {
-    ray_gen_constants_.stencil = {
-      -1.f, -1.f / aspect_ratio,
-      1.f, 1.f / aspect_ratio
-    };
-  } else {
-    ray_gen_constants_.stencil = {
-      -aspect_ratio, -1.f,
-      aspect_ratio, 1.f
-    };
-  }
+  ray_gen_constants_.viewport = {
+    -aspect_ratio, -1.f,
+    aspect_ratio, 1.f
+  };
 }
 
 void App::Initialize() {
@@ -164,9 +155,9 @@ void App::Initialize() {
 
   {
     float vertices[] = {
-      0.f, -0.5f, 2.f,
-      -0.5f, 0.5f, 2.f,
-      0.5f, 0.5f, 2.f
+      0.f, -1.f, 3.f,
+      -1.f, 1.f, 3.f,
+      1.f, 1.f, 3.f
     };
 
     UINT16 indices[] = { 0, 1, 2 };

@@ -10,7 +10,6 @@ struct Viewport {
 
 struct RayGenConstantBuffer {
   Viewport viewport;
-  Viewport stencil;
 };
 
 #endif  // RAYTRACING_SHADER_H_

@@ -11,12 +11,12 @@ typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 struct RayPayload {
   float4 color;
 };
-
-bool IsInsideViewport(float2 p, Viewport viewport)
-{
-  return (p.x >= viewport.left && p.x <= viewport.right) &&
-         (p.y >= viewport.top && p.y <= viewport.bottom);
-}
+//
+//bool IsInsideViewport(float2 p, Viewport viewport)
+//{
+//  return (p.x >= viewport.left && p.x <= viewport.right) &&
+//         (p.y >= viewport.top && p.y <= viewport.bottom);
+//}
 
 [shader("raygeneration")]
 void RaygenShader() {
@@ -27,20 +27,18 @@ void RaygenShader() {
   float viewport_y =
       lerp(ray_gen_constants.viewport.top, ray_gen_constants.viewport.bottom, lerp_values.y);
 
-  float3 ray_dir = float3(viewport_x / 2.f, viewport_y / 2.f, 1.f);
+  float3 ray_dir = float3(viewport_x * 0.414f, viewport_y * 0.414f, 1.f);
   float3 origin = float3(0, 0, 0.f);
 
-  if (IsInsideViewport(origin.xy, ray_gen_constants.stencil)) {
-    RayDesc ray;
-    ray.Origin = origin;
-    ray.Direction = ray_dir;
-    ray.TMin = 0.001;
-    ray.TMax = 10000.0;
-    RayPayload payload = { float4(0, 0, 0, 0) };
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = ray_dir;
+  ray.TMin = 0.001;
+  ray.TMax = 10000.0;
+  RayPayload payload = { float4(0, 0, 0, 0) };
+  TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 
-    RenderTarget[DispatchRaysIndex().xy] = payload.color;
-  }
+  RenderTarget[DispatchRaysIndex().xy] = payload.color;
 }
 
 [shader("closesthit")]

@@ -13,7 +13,7 @@ struct MaterialIndex {
   uint index;
 };
 
-ConstantBuffer<uint> material_index : register(b2);
+ConstantBuffer<MaterialIndex> material_index : register(b2);
 
 struct PSInput {
 	float4 position : SV_POSITION;
