@@ -19,6 +19,10 @@ public:
 
 private:
   void InitDeviceAndSwapChain();
+  void CreateCommandObjects();
+  void CreateDescriptorHeap();
+
+  void CreateBuffers();
 
   void MoveToNextFrame();
 
@@ -65,6 +69,7 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
 
+   D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
 
    struct Frame {

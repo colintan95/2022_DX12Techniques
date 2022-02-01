@@ -30,9 +30,11 @@ App::App(HWND hwnd) : hwnd_(hwnd) {
 void App::Initialize() {
   InitDeviceAndSwapChain();
 
-  for (int i = 0; i < kNumFrames; ++i) {
-    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
-  }
+  CreateCommandObjects();
+
+  CreateDescriptorHeap();
+
+  CreateBuffers();
 
   {
     CD3DX12_DESCRIPTOR_RANGE1 range{};
@@ -71,28 +73,6 @@ void App::Initialize() {
     ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
                                                signature->GetBufferSize(),
                                                IID_PPV_ARGS(&local_root_signature_)));
-  }
-
-  {
-    for (int i = 0; i < kNumFrames; ++i) {
-      ThrowIfFailed(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                                    IID_PPV_ARGS(&frames_[i].command_allocator)));
-    }
-
-    ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                             frames_[frame_index_].command_allocator.Get(), nullptr,
-                                             IID_PPV_ARGS(&command_list_)));
-
-    ThrowIfFailed(command_list_.As(&dxr_command_list_));
-
-    ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
-                                       IID_PPV_ARGS(&fence_)));
-    ++latest_fence_value_;
-
-    fence_event_ = CreateEvent(nullptr, false, false, nullptr);
-    if (fence_event_ == nullptr) {
-      ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-    }
   }
 
   {
@@ -144,69 +124,6 @@ void App::Initialize() {
   }
 
   {
-    D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{};
-    descriptor_heap_desc.NumDescriptors = 1;
-    descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    descriptor_heap_desc.NodeMask = 0;
-
-    device_->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap_));
-  }
-
-  {
-    float vertices[] = {
-      0.f, -1.f, 3.f,
-      -1.f, 1.f, 3.f,
-      1.f, 1.f, 3.f
-    };
-
-    UINT16 indices[] = { 0, 1, 2 };
-
-    {
-      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-      CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
-
-      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                     &buffer_desc,
-                                                     D3D12_RESOURCE_STATE_GENERIC_READ,
-                                                     nullptr, IID_PPV_ARGS(&vertex_buffer_)));
-
-      void* buffer_ptr;
-      vertex_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
-
-      memcpy(buffer_ptr, vertices, sizeof(vertices));
-
-      vertex_buffer_->Unmap(0, nullptr);
-    }
-
-    {
-      CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-      CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
-
-      ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                     &buffer_desc,
-                                                     D3D12_RESOURCE_STATE_GENERIC_READ,
-                                                     nullptr, IID_PPV_ARGS(&index_buffer_)));
-
-      void* buffer_ptr;
-      index_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
-
-      memcpy(buffer_ptr, indices, sizeof(indices));
-
-      index_buffer_->Unmap(0, nullptr);
-    }
-
-    ThrowIfFailed(command_list_->Close());
-    ID3D12CommandList* command_lists[] = { command_list_.Get() };
-    command_queue_->ExecuteCommandLists(_countof(command_lists), command_lists);
-
-    WaitForGpu();
-  }
-
-  {
-    ThrowIfFailed(frames_[frame_index_].command_allocator->Reset());
-    ThrowIfFailed(command_list_->Reset(frames_[frame_index_].command_allocator.Get(), nullptr));
-
     D3D12_RAYTRACING_GEOMETRY_DESC geometry_desc{};
     geometry_desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
     geometry_desc.Triangles.IndexBuffer = index_buffer_->GetGPUVirtualAddress();
@@ -421,16 +338,11 @@ void App::Initialize() {
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &output_desc,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
                                                    IID_PPV_ARGS(&raytracing_output_)));
-
-    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle =
-        descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
-    uav_gpu_handle_ = descriptor_heap_->GetGPUDescriptorHandleForHeapStart();
-
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
     uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 
     device_->CreateUnorderedAccessView(raytracing_output_.Get(), nullptr, &uav_desc,
-                                       uav_cpu_handle);
+                                       uav_cpu_handle_);
   }
 }
 
@@ -480,6 +392,89 @@ void App::InitDeviceAndSwapChain() {
   ThrowIfFailed(factory->CreateSwapChainForHwnd(command_queue_.Get(), hwnd_, &swap_chain_desc,
                                                 nullptr, nullptr, &swap_chain));
   ThrowIfFailed(swap_chain.As(&swap_chain_));
+}
+
+void App::CreateCommandObjects()   {
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                                  IID_PPV_ARGS(&frames_[i].command_allocator)));
+  }
+
+  ThrowIfFailed(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                            frames_[frame_index_].command_allocator.Get(), nullptr,
+                                            IID_PPV_ARGS(&command_list_)));
+
+  ThrowIfFailed(command_list_.As(&dxr_command_list_));
+
+  ThrowIfFailed(device_->CreateFence(latest_fence_value_, D3D12_FENCE_FLAG_NONE,
+                                      IID_PPV_ARGS(&fence_)));
+  ++latest_fence_value_;
+
+  fence_event_ = CreateEvent(nullptr, false, false, nullptr);
+  if (fence_event_ == nullptr) {
+    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+  }
+}
+
+void App::CreateDescriptorHeap() {
+  D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{};
+  descriptor_heap_desc.NumDescriptors = 1;
+  descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  descriptor_heap_desc.NodeMask = 0;
+
+  device_->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap_));
+
+  uav_cpu_handle_ = descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
+  uav_gpu_handle_ = descriptor_heap_->GetGPUDescriptorHandleForHeapStart();
+}
+
+void App::CreateBuffers() {
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
+  }
+
+  float vertices[] = {
+    0.f, -1.f, 3.f,
+    -1.f, 1.f, 3.f,
+    1.f, 1.f, 3.f
+  };
+
+  UINT16 indices[] = { 0, 1, 2 };
+
+  {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                    &buffer_desc,
+                                                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                    nullptr, IID_PPV_ARGS(&vertex_buffer_)));
+
+    void* buffer_ptr;
+    vertex_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
+
+    memcpy(buffer_ptr, vertices, sizeof(vertices));
+
+    vertex_buffer_->Unmap(0, nullptr);
+  }
+
+  {
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                    &buffer_desc,
+                                                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                    nullptr, IID_PPV_ARGS(&index_buffer_)));
+
+    void* buffer_ptr;
+    index_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
+
+    memcpy(buffer_ptr, indices, sizeof(indices));
+
+    index_buffer_->Unmap(0, nullptr);
+  }
 }
 
 void App::Cleanup() {
