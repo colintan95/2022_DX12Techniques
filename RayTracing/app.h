@@ -24,11 +24,13 @@ private:
 
   void CreatePipeline();
 
-  void CreateShaderTables();
-
   void CreateDescriptorHeap();
 
+  void InitData();
+
   void CreateBuffersAndViews();
+
+  void CreateShaderTables();
 
   void CreateAccelerationStructure();
 
@@ -59,18 +61,20 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12StateObject> dxr_state_object_;
 
-   Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
-
    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptor_heap_;
    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
 
-   Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> index_buffer_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> matrix_buffer_;
+   UINT matrix_buffer_size_ = 0;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
+
+   Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
+
+   UINT hit_group_shader_record_size_ = 0;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> bottom_level_acceleration_structure_;
    Microsoft::WRL::ComPtr<ID3D12Resource> top_level_acceleration_structure_;
@@ -88,6 +92,15 @@ private:
    Frame frames_[kNumFrames];
 
    RayGenConstantBuffer ray_gen_constants_;
+
+   float camera_yaw_ = 0.f;
+   float camera_pitch_ = 0.f;
+   float camera_roll_ = 0.f;
+
+   DirectX::XMFLOAT3X4 world_view_mat_;
+
+   std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
+   std::unique_ptr<DirectX::Model> model_;
 };
 
 #endif  // APP_H_

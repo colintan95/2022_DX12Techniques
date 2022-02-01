@@ -44,4 +44,9 @@
       <Filter>Source Files</Filter>
     </FxCompile>
   </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="cornell_box.sdkmesh">
+      <Filter>Source Files</Filter>
+    </CopyFileToFolders>
+  </ItemGroup>
 </Project>

@@ -22,8 +22,8 @@ App::App(HWND hwnd) : hwnd_(hwnd) {
   float aspect_ratio = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
 
   ray_gen_constants_.viewport = {
-    -aspect_ratio, -1.f,
-    aspect_ratio, 1.f
+    -aspect_ratio, 1.f,
+    aspect_ratio, -1.f
   };
 }
 
@@ -34,11 +34,13 @@ void App::Initialize() {
 
   CreatePipeline();
 
-  CreateShaderTables();
-
   CreateDescriptorHeap();
 
+  InitData();
+
   CreateBuffersAndViews();
+
+  CreateShaderTables();
 
   CreateAccelerationStructure();
 }
@@ -200,6 +202,86 @@ void App::CreatePipeline() {
   ThrowIfFailed(dxr_device_->CreateStateObject(pipeline_desc, IID_PPV_ARGS(&dxr_state_object_)));
 }
 
+void App::CreateDescriptorHeap() {
+  D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{};
+  descriptor_heap_desc.NumDescriptors = 1;
+  descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  descriptor_heap_desc.NodeMask = 0;
+
+  device_->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap_));
+
+  uav_cpu_handle_ = descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
+  uav_gpu_handle_ = descriptor_heap_->GetGPUDescriptorHandleForHeapStart();
+}
+
+void App::InitData() {
+  camera_yaw_ = DirectX::XM_PI;
+
+  DirectX::XMMATRIX camera_view_mat =
+      DirectX::XMMatrixRotationY(-camera_yaw_) *  DirectX::XMMatrixRotationX(-camera_pitch_) *
+      DirectX::XMMatrixRotationZ(-camera_roll_);
+
+  DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
+  DirectX::XMMATRIX view_mat = DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * camera_view_mat;
+
+  DirectX::XMStoreFloat3x4(&world_view_mat_, world_mat * view_mat);
+
+  graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
+  model_ = DirectX::Model::CreateFromSDKMESH(device_.Get(), L"cornell_box.sdkmesh");
+
+  DirectX::ResourceUploadBatch resource_upload(device_.Get());
+  resource_upload.Begin();
+  model_->LoadStaticBuffers(device_.Get(), resource_upload);
+
+  std::future<void> resource_upload_done = resource_upload.End(command_queue_.Get());
+  resource_upload_done.wait();
+}
+
+void App::CreateBuffersAndViews() {
+  for (int i = 0; i < kNumFrames; ++i) {
+    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
+  }
+
+  {
+    matrix_buffer_size_ = Align(sizeof(DirectX::XMFLOAT3X4),
+                                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC resource_desc = CD3DX12_RESOURCE_DESC::Buffer(matrix_buffer_size_);
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                   &resource_desc,
+                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                   IID_PPV_ARGS(&matrix_buffer_)));
+
+    DirectX::XMFLOAT3X4* buffer_ptr;
+    ThrowIfFailed(matrix_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+
+    *buffer_ptr = world_view_mat_;
+
+    matrix_buffer_->Unmap(0, nullptr);
+  }
+
+  {
+    CD3DX12_RESOURCE_DESC output_desc =
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, kWindowWidth, kWindowHeight, 1, 1,
+                                     1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &output_desc,
+                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                   IID_PPV_ARGS(&raytracing_output_)));
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
+    uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    device_->CreateUnorderedAccessView(raytracing_output_.Get(), nullptr, &uav_desc,
+                                       uav_cpu_handle_);
+  }
+}
+
+
 void App::CreateShaderTables() {
   ComPtr<ID3D12StateObjectProperties> state_object_props;
   ThrowIfFailed(dxr_state_object_.As(&state_object_props));
@@ -233,11 +315,19 @@ void App::CreateShaderTables() {
     ray_gen_shader_table_->Unmap(0, nullptr);
   }
 
+  int num_meshes = 0;
+  for (auto& mesh : model_->meshes) {
+    num_meshes += static_cast<UINT>(mesh->opaqueMeshParts.size());
+  }
+
   {
+    hit_group_shader_record_size_ = Align(shader_identifier_size,
+                                          D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC buffer_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(Align(shader_identifier_size,
-                                            D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+        CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT>(hit_group_shader_record_size_) *
+                                      num_meshes);
 
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
                                                     &buffer_desc,
@@ -248,7 +338,11 @@ void App::CreateShaderTables() {
     ThrowIfFailed(hit_group_shader_table_->Map(0, nullptr,
                                                 reinterpret_cast<void**>(&buffer_ptr)));
 
-    memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
+    for (int i = 0; i < num_meshes; ++i) {
+      memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
+
+      buffer_ptr += hit_group_shader_record_size_;
+    }
 
     hit_group_shader_table_->Unmap(0, nullptr);
   }
@@ -273,96 +367,30 @@ void App::CreateShaderTables() {
   }
 }
 
-void App::CreateDescriptorHeap() {
-  D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{};
-  descriptor_heap_desc.NumDescriptors = 1;
-  descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  descriptor_heap_desc.NodeMask = 0;
-
-  device_->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap_));
-
-  uav_cpu_handle_ = descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
-  uav_gpu_handle_ = descriptor_heap_->GetGPUDescriptorHandleForHeapStart();
-}
-
-void App::CreateBuffersAndViews() {
-  for (int i = 0; i < kNumFrames; ++i) {
-    ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
-  }
-
-  float vertices[] = {
-    0.f, -1.f, 3.f,
-    -1.f, 1.f, 3.f,
-    1.f, 1.f, 3.f
-  };
-
-  UINT16 indices[] = { 0, 1, 2 };
-
-  {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
-
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                    &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                                                    nullptr, IID_PPV_ARGS(&vertex_buffer_)));
-
-    void* buffer_ptr;
-    vertex_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
-
-    memcpy(buffer_ptr, vertices, sizeof(vertices));
-
-    vertex_buffer_->Unmap(0, nullptr);
-  }
-
-  {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
-
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                    &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                                                    nullptr, IID_PPV_ARGS(&index_buffer_)));
-
-    void* buffer_ptr;
-    index_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr));
-
-    memcpy(buffer_ptr, indices, sizeof(indices));
-
-    index_buffer_->Unmap(0, nullptr);
-  }
-
-  {
-    CD3DX12_RESOURCE_DESC output_desc =
-        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, kWindowWidth, kWindowHeight, 1, 1,
-                                     1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
-
-    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &output_desc,
-                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                   IID_PPV_ARGS(&raytracing_output_)));
-    D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
-    uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-
-    device_->CreateUnorderedAccessView(raytracing_output_.Get(), nullptr, &uav_desc,
-                                       uav_cpu_handle_);
-  }
-}
-
 void App::CreateAccelerationStructure() {
-  D3D12_RAYTRACING_GEOMETRY_DESC geometry_desc{};
-  geometry_desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-  geometry_desc.Triangles.IndexBuffer = index_buffer_->GetGPUVirtualAddress();
-  geometry_desc.Triangles.IndexCount = 3;
-  geometry_desc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
-  geometry_desc.Triangles.Transform3x4 = 0;
-  geometry_desc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-  geometry_desc.Triangles.VertexCount = 3;
-  geometry_desc.Triangles.VertexBuffer.StartAddress = vertex_buffer_->GetGPUVirtualAddress();
-  geometry_desc.Triangles.VertexBuffer.StrideInBytes = sizeof(float) * 3;
-  geometry_desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+  std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry_descs;
+
+  for (auto& mesh : model_->meshes) {
+    for (auto& mesh_part : mesh->opaqueMeshParts) {
+      // TODO: Right now the vertex buffers also contains the normals. See if we can separate the
+      // positions from the normals and uv coords when loading the model.
+      D3D12_RAYTRACING_GEOMETRY_DESC geometry_desc{};
+      geometry_desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+      geometry_desc.Triangles.IndexBuffer =
+          mesh_part->staticIndexBuffer->GetGPUVirtualAddress() + mesh_part->startIndex * sizeof(UINT16);
+      geometry_desc.Triangles.IndexCount = mesh_part->indexCount;
+      geometry_desc.Triangles.IndexFormat = mesh_part->indexFormat;
+      geometry_desc.Triangles.Transform3x4 = matrix_buffer_->GetGPUVirtualAddress();
+      geometry_desc.Triangles.VertexBuffer.StartAddress =
+          mesh_part->staticVertexBuffer->GetGPUVirtualAddress();
+      geometry_desc.Triangles.VertexBuffer.StrideInBytes = mesh_part->vertexStride;
+      geometry_desc.Triangles.VertexCount = mesh_part->vertexCount;
+      geometry_desc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+      geometry_desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+      geometry_descs.push_back(geometry_desc);
+    }
+  }
 
   D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS top_level_inputs{};
   top_level_inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
@@ -379,8 +407,8 @@ void App::CreateAccelerationStructure() {
   bottom_level_inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
   bottom_level_inputs.Flags =
       D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-  bottom_level_inputs.NumDescs = 1;
-  bottom_level_inputs.pGeometryDescs = &geometry_desc;
+  bottom_level_inputs.NumDescs = static_cast<UINT>(geometry_descs.size());
+  bottom_level_inputs.pGeometryDescs = geometry_descs.data();
 
   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO bottom_level_prebuild_info{};
   dxr_device_->GetRaytracingAccelerationStructurePrebuildInfo(&bottom_level_inputs,
@@ -515,7 +543,7 @@ void App::RenderFrame() {
 
   dispatch_desc.HitGroupTable.StartAddress = hit_group_shader_table_->GetGPUVirtualAddress();
   dispatch_desc.HitGroupTable.SizeInBytes = hit_group_shader_table_->GetDesc().Width;
-  dispatch_desc.HitGroupTable.StrideInBytes = dispatch_desc.HitGroupTable.SizeInBytes;
+  dispatch_desc.HitGroupTable.StrideInBytes = hit_group_shader_record_size_;
 
   dispatch_desc.MissShaderTable.StartAddress = miss_shader_table_->GetGPUVirtualAddress();
   dispatch_desc.MissShaderTable.SizeInBytes = miss_shader_table_->GetDesc().Width;

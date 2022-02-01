@@ -11,6 +11,7 @@
 // Without this, "Model.h" will error out.
 #include <stdexcept>
 
+#include "GraphicsMemory.h"
 #include "Model.h"
 #include "ResourceUploadBatch.h"
 
