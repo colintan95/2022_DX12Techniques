@@ -7,6 +7,11 @@
 #include "dx_includes.h"
 #include "raytracing_shader.h"
 
+struct Material {
+  DirectX::XMFLOAT4 ambient_color;
+  DirectX::XMFLOAT4 diffuse_color;
+};
+
 class App {
 public:
   App(HWND hwnd);
@@ -57,16 +62,22 @@ private:
    Microsoft::WRL::ComPtr<ID3D12Device5> dxr_device_;
 
    Microsoft::WRL::ComPtr<ID3D12RootSignature> global_root_signature_;
-   Microsoft::WRL::ComPtr<ID3D12RootSignature> local_root_signature_;
+   Microsoft::WRL::ComPtr<ID3D12RootSignature> ray_gen_root_signature_;
+   Microsoft::WRL::ComPtr<ID3D12RootSignature> closest_hit_root_signature_;
 
    Microsoft::WRL::ComPtr<ID3D12StateObject> dxr_state_object_;
 
-   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptor_heap_;
-   D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
-   D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
+   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> cbv_uav_heap_;
+   UINT cbv_uav_descriptor_size_ = 0;
+
+   CD3DX12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
+   CD3DX12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> matrix_buffer_;
    UINT matrix_buffer_size_ = 0;
+
+   Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
+   UINT materials_buffer_size_ = 0;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
 
@@ -101,6 +112,8 @@ private:
 
    std::unique_ptr<DirectX::GraphicsMemory> graphics_memory_;
    std::unique_ptr<DirectX::Model> model_;
+
+   std::vector<Material> materials_;
 };
 
 #endif  // APP_H_

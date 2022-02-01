@@ -120,9 +120,10 @@ void App::CreatePipeline() {
     CD3DX12_DESCRIPTOR_RANGE1 range{};
     range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
-    CD3DX12_ROOT_PARAMETER1 root_params[2] = {};
+    CD3DX12_ROOT_PARAMETER1 root_params[3] = {};
     root_params[0].InitAsDescriptorTable(1, &range);
     root_params[1].InitAsShaderResourceView(0);
+    root_params[2].InitAsConstantBufferView(1);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(_countof(root_params), root_params);
@@ -152,7 +153,25 @@ void App::CreatePipeline() {
                                                         &error));
     ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
                                                signature->GetBufferSize(),
-                                               IID_PPV_ARGS(&local_root_signature_)));
+                                               IID_PPV_ARGS(&ray_gen_root_signature_)));
+  }
+
+  {
+    CD3DX12_ROOT_PARAMETER1 root_param{};
+    root_param.InitAsConstants(1, 2, 0);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
+    root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
+                                 D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+
+    ComPtr<ID3DBlob> signature;
+    ComPtr<ID3DBlob> error;
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc,
+                                                        D3D_ROOT_SIGNATURE_VERSION_1_1, &signature,
+                                                        &error));
+    ThrowIfFailed(device_->CreateRootSignature(0, signature->GetBufferPointer(),
+                                               signature->GetBufferSize(),
+                                               IID_PPV_ARGS(&closest_hit_root_signature_)));
   }
 
   CD3DX12_STATE_OBJECT_DESC pipeline_desc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
@@ -182,12 +201,23 @@ void App::CreatePipeline() {
   {
     CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* local_root_signature =
         pipeline_desc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
-    local_root_signature->SetRootSignature(local_root_signature_.Get());
+    local_root_signature->SetRootSignature(ray_gen_root_signature_.Get());
 
     CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
         pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
     association->SetSubobjectToAssociate(*local_root_signature);
     association->AddExport(kRayGenShaderName);
+  }
+
+  {
+    CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* local_root_signature =
+        pipeline_desc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
+    local_root_signature->SetRootSignature(closest_hit_root_signature_.Get());
+
+    CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
+        pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
+    association->SetSubobjectToAssociate(*local_root_signature);
+    association->AddExport(kClosestHitShaderName);
   }
 
   CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT* global_root_signature =
@@ -203,16 +233,18 @@ void App::CreatePipeline() {
 }
 
 void App::CreateDescriptorHeap() {
-  D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{};
-  descriptor_heap_desc.NumDescriptors = 1;
-  descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-  descriptor_heap_desc.NodeMask = 0;
+  D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
+  heap_desc.NumDescriptors = 1;
+  heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
-  device_->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap_));
+  device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&cbv_uav_heap_));
 
-  uav_cpu_handle_ = descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
-  uav_gpu_handle_ = descriptor_heap_->GetGPUDescriptorHandleForHeapStart();
+  cbv_uav_descriptor_size_ =
+      device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+  uav_cpu_handle_ = cbv_uav_heap_->GetCPUDescriptorHandleForHeapStart();
+  uav_gpu_handle_ = cbv_uav_heap_->GetGPUDescriptorHandleForHeapStart();
 }
 
 void App::InitData() {
@@ -236,6 +268,18 @@ void App::InitData() {
 
   std::future<void> resource_upload_done = resource_upload.End(command_queue_.Get());
   resource_upload_done.wait();
+
+  for (const auto& effect_info : model_->materials) {
+    Material material{};
+    material.ambient_color = DirectX::XMFLOAT4(effect_info.ambientColor.x,
+                                               effect_info.ambientColor.y,
+                                               effect_info.ambientColor.z, 0.f);
+    material.diffuse_color = DirectX::XMFLOAT4(effect_info.diffuseColor.x,
+                                               effect_info.diffuseColor.y,
+                                               effect_info.diffuseColor.z, 0.f);
+
+    materials_.push_back(material);
+  }
 }
 
 void App::CreateBuffersAndViews() {
@@ -264,6 +308,27 @@ void App::CreateBuffersAndViews() {
   }
 
   {
+    materials_buffer_size_ = Align(sizeof(Material) * materials_.size(),
+                                   D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+
+    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC resource_desc =
+        CD3DX12_RESOURCE_DESC::Buffer(materials_buffer_size_);
+
+    ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
+                                                   &resource_desc,
+                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                   IID_PPV_ARGS(&materials_buffer_)));
+
+    DirectX::XMFLOAT4X4* buffer_ptr;
+    ThrowIfFailed(materials_buffer_->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+
+    std::memcpy(buffer_ptr, materials_.data(), materials_.size() * sizeof(Material));
+
+    materials_buffer_->Unmap(0, nullptr);
+  }
+
+  {
     CD3DX12_RESOURCE_DESC output_desc =
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, kWindowWidth, kWindowHeight, 1, 1,
                                      1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -280,7 +345,6 @@ void App::CreateBuffersAndViews() {
                                        uav_cpu_handle_);
   }
 }
-
 
 void App::CreateShaderTables() {
   ComPtr<ID3D12StateObjectProperties> state_object_props;
@@ -321,12 +385,14 @@ void App::CreateShaderTables() {
   }
 
   {
-    hit_group_shader_record_size_ = Align(shader_identifier_size,
+    UINT offset_to_material_index = Align(shader_identifier_size, sizeof(UINT32));
+
+    hit_group_shader_record_size_ = Align(offset_to_material_index + sizeof(UINT32),
                                           D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC buffer_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT>(hit_group_shader_record_size_) *
+        CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(hit_group_shader_record_size_) *
                                       num_meshes);
 
     ThrowIfFailed(device_->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
@@ -338,10 +404,16 @@ void App::CreateShaderTables() {
     ThrowIfFailed(hit_group_shader_table_->Map(0, nullptr,
                                                 reinterpret_cast<void**>(&buffer_ptr)));
 
-    for (int i = 0; i < num_meshes; ++i) {
-      memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
+    for (auto& mesh : model_->meshes) {
+      for (auto& mesh_part : mesh->opaqueMeshParts) {
+        memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
 
-      buffer_ptr += hit_group_shader_record_size_;
+        UINT32* material_index_ptr =
+            reinterpret_cast<UINT32*>(buffer_ptr + offset_to_material_index);
+        *material_index_ptr = mesh_part->materialIndex;
+
+        buffer_ptr += hit_group_shader_record_size_;
+      }
     }
 
     hit_group_shader_table_->Unmap(0, nullptr);
@@ -528,12 +600,13 @@ void App::RenderFrame() {
 
   dxr_command_list_->SetComputeRootSignature(global_root_signature_.Get());
 
-  ID3D12DescriptorHeap* descriptor_heaps[] = { descriptor_heap_.Get() };
+  ID3D12DescriptorHeap* descriptor_heaps[] = { cbv_uav_heap_.Get() };
   dxr_command_list_->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
 
   dxr_command_list_->SetComputeRootDescriptorTable(0, uav_gpu_handle_);
   dxr_command_list_->SetComputeRootShaderResourceView(
       1, top_level_acceleration_structure_->GetGPUVirtualAddress());
+  dxr_command_list_->SetComputeRootConstantBufferView(2, materials_buffer_->GetGPUVirtualAddress());
 
   D3D12_DISPATCH_RAYS_DESC dispatch_desc{};
 

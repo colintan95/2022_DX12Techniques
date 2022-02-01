@@ -6,17 +6,24 @@ RWTexture2D<float4> RenderTarget : register(u0);
 
 ConstantBuffer<RayGenConstantBuffer> ray_gen_constants : register(b0);
 
+struct Material {
+  float4 ambient_color;
+  float4 diffuse_color;
+};
+
+cbuffer Materials : register(b1) {
+  Material materials[32];
+};
+
+cbuffer MaterialIndex : register(b2) {
+  uint material_index;
+};
+
 typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 
 struct RayPayload {
   float4 color;
 };
-//
-//bool IsInsideViewport(float2 p, Viewport viewport)
-//{
-//  return (p.x >= viewport.left && p.x <= viewport.right) &&
-//         (p.y >= viewport.top && p.y <= viewport.bottom);
-//}
 
 [shader("raygeneration")]
 void RaygenShader() {
@@ -46,7 +53,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes attr) {
   float3 barycentrics = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x,
                                attr.barycentrics.y);
 
-  payload.color = float4(barycentrics, 1);
+  payload.color = float4(materials[material_index].ambient_color.rgb, 1);
 }
 
 [shader("miss")]
