@@ -19,10 +19,18 @@ public:
 
 private:
   void InitDeviceAndSwapChain();
+
   void CreateCommandObjects();
+
+  void CreatePipeline();
+
+  void CreateShaderTables();
+
   void CreateDescriptorHeap();
 
-  void CreateBuffers();
+  void CreateBuffersAndViews();
+
+  void CreateAccelerationStructure();
 
   void MoveToNextFrame();
 
@@ -41,8 +49,8 @@ private:
    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
 
    Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-    UINT64 latest_fence_value_ = 0;
-    HANDLE fence_event_;
+   UINT64 latest_fence_value_ = 0;
+   HANDLE fence_event_;
 
    Microsoft::WRL::ComPtr<ID3D12Device5> dxr_device_;
 
@@ -51,26 +59,23 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12StateObject> dxr_state_object_;
 
+   Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table_;
+   Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
+
    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptor_heap_;
+   D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
+   D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
    Microsoft::WRL::ComPtr<ID3D12Resource> index_buffer_;
+
+   Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> bottom_level_acceleration_structure_;
    Microsoft::WRL::ComPtr<ID3D12Resource> top_level_acceleration_structure_;
 
    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> dxr_command_list_;
-
-   RayGenConstantBuffer ray_gen_constants_;
-
-   Microsoft::WRL::ComPtr<ID3D12Resource> ray_gen_shader_table_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> hit_group_shader_table_;
-   Microsoft::WRL::ComPtr<ID3D12Resource> miss_shader_table_;
-
-   Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
-
-   D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
-   D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
 
    struct Frame {
      Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
@@ -81,6 +86,8 @@ private:
    };
 
    Frame frames_[kNumFrames];
+
+   RayGenConstantBuffer ray_gen_constants_;
 };
 
 #endif  // APP_H_
