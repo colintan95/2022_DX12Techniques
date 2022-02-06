@@ -5,6 +5,7 @@
 #include <vector>
 #include <cassert>
 #include <sstream>
+#include <unordered_map>
 
 struct float3 {
   float x;
@@ -26,6 +27,17 @@ struct Group {
   std::vector<MaterialFaceGroup> material_face_groups;
 };
 
+struct Material {
+  std::string name;
+  float Ns;
+  float Ni;
+  int illum;
+  float3 Ka;
+  float3 Kd;
+  float3 Ks;
+  float3 Ke;
+};
+
 struct Result {
   std::string material_lib;
   std::vector<float3> positions;
@@ -37,7 +49,7 @@ Result ParseObj() {
 
   std::ifstream fstrm("cornell_box.obj");
   if (!fstrm.is_open())
-    return {};
+    return result;
 
   std::string line;
   std::string str;
@@ -58,15 +70,9 @@ Result ParseObj() {
         break;
       } else if (str == "v") {
         float3 val{};
-
-        sstrm >> str;
-        val.x = std::stof(str);
-
-        sstrm >> str;
-        val.y = std::stof(str);
-
-        sstrm >> str;
-        val.z = std::stof(str);
+        sstrm >> val.x;
+        sstrm >>  val.y;
+        sstrm >> val.z;
 
         result.positions.push_back(val);
 
@@ -115,8 +121,75 @@ Result ParseObj() {
   return result;
 }
 
+std::unordered_map<std::string, Material> ParseMaterials() {
+  std::unordered_map<std::string, Material> materials;
+
+  std::ifstream fstrm("cornell_box.mtl");
+  if (!fstrm.is_open())
+    return materials;
+
+  std::string line;
+  std::string str;
+
+  Material material{};
+
+  while (std::getline(fstrm, line)) {
+    std::stringstream sstrm(line);
+
+    while (sstrm >> str) {
+      // Ignores comments.
+      if (str.find("#") != std::string::npos)
+        break;
+
+      if (str == "newmtl") {
+        if (!material.name.empty())
+          materials[material.name] = material;
+
+        material = Material{};
+        sstrm >> material.name;
+
+      } else if (str == "Ns") {
+        sstrm >> material.Ns;
+
+      } else if (str == "Ni") {
+        sstrm >> material.Ni;
+
+      } else if (str == "illum") {
+        sstrm >> material.illum;
+
+      } else if (str == "Ka") {
+        sstrm >> material.Ka.x;
+        sstrm >> material.Ka.y;
+        sstrm >> material.Ka.z;
+
+      } else if (str == "Kd") {
+        sstrm >> material.Kd.x;
+        sstrm >> material.Kd.y;
+        sstrm >> material.Kd.z;
+
+      } else if (str == "Ks") {
+        sstrm >> material.Ks.x;
+        sstrm >> material.Ks.y;
+        sstrm >> material.Ks.z;
+
+      } else if (str == "Ke") {
+        sstrm >> material.Ke.x;
+        sstrm >> material.Ke.y;
+        sstrm >> material.Ke.z;
+      }
+    }
+  }
+
+  if (!material.name.empty())
+    materials[material.name] = material;
+
+  return materials;
+}
+
 int main() {
   Result result = ParseObj();
+
+  auto materials = ParseMaterials();
 
   return 0;
 }
