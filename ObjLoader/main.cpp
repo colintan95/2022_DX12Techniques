@@ -17,16 +17,6 @@ struct Face {
   std::vector<int> indices;
 };
 
-struct MaterialFaceGroup {
-  std::string material;
-  std::vector<Face> faces;
-};
-
-struct Group {
-  std::string group_name;
-  std::vector<MaterialFaceGroup> material_face_groups;
-};
-
 struct Material {
   std::string name;
   float Ns;
@@ -41,7 +31,7 @@ struct Material {
 struct Result {
   std::string material_lib;
   std::vector<float3> positions;
-  std::vector<Group> groups;
+  std::vector<Face> faces;
 };
 
 Result ParseObj() {
@@ -54,9 +44,6 @@ Result ParseObj() {
   std::string line;
   std::string str;
 
-  Group group{};
-  MaterialFaceGroup material_face_group{};
-
   while (std::getline(fstrm, line)) {
     std::stringstream sstrm(line);
 
@@ -65,35 +52,13 @@ Result ParseObj() {
       if (str.find("#") != std::string::npos)
         break;
 
-      if (str == "mtllib") {
-        sstrm >> result.material_lib;
-        break;
-      } else if (str == "v") {
+      if (str == "v") {
         float3 val{};
         sstrm >> val.x;
         sstrm >>  val.y;
         sstrm >> val.z;
 
         result.positions.push_back(val);
-
-      } else if (str == "g") {
-        if (!material_face_group.faces.empty())
-          group.material_face_groups.push_back(material_face_group);
-
-        material_face_group.faces.clear();
-
-        if (!group.material_face_groups.empty())
-          result.groups.push_back(group);
-
-        group = Group{};
-        sstrm >> group.group_name;
-
-      } else if (str == "usemtl") {
-        if (!material_face_group.faces.empty())
-          group.material_face_groups.push_back(material_face_group);
-
-        material_face_group = MaterialFaceGroup{};
-        sstrm >> material_face_group.material;
 
       } else if (str == "f") {
         Face face{};
@@ -107,16 +72,10 @@ Result ParseObj() {
           face.indices.push_back(index);
         }
 
-        material_face_group.faces.push_back(face);
+        result.faces.push_back(face);
       }
     }
   }
-
-  if (!material_face_group.faces.empty())
-    group.material_face_groups.push_back(material_face_group);
-
-  if (!group.material_face_groups.empty())
-    result.groups.push_back(group);
 
   return result;
 }
