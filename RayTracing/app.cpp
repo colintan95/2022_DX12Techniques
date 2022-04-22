@@ -117,13 +117,15 @@ void App::CreateCommandObjects()   {
 
 void App::CreatePipeline() {
   {
-    CD3DX12_DESCRIPTOR_RANGE1 range{};
-    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);
 
-    CD3DX12_ROOT_PARAMETER1 root_params[3] = {};
-    root_params[0].InitAsDescriptorTable(1, &range);
+    CD3DX12_ROOT_PARAMETER1 root_params[4] = {};
+    root_params[0].InitAsDescriptorTable(1, &ranges[0]);
     root_params[1].InitAsShaderResourceView(0);
     root_params[2].InitAsConstantBufferView(1);
+    root_params[3].InitAsDescriptorTable(1, &ranges[1]);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(_countof(root_params), root_params);
@@ -158,7 +160,7 @@ void App::CreatePipeline() {
 
   {
     CD3DX12_ROOT_PARAMETER1 root_param{};
-    root_param.InitAsConstants(1, 2, 0);
+    root_param.InitAsConstants(SizeOfInUint32(BLASConstants), 2, 0);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
@@ -234,17 +236,32 @@ void App::CreatePipeline() {
 
 void App::CreateDescriptorHeap() {
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-  heap_desc.NumDescriptors = 1;
+  heap_desc.NumDescriptors = 3;
   heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
-  device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&cbv_uav_heap_));
+  device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&cbv_srv_uav_heap_));
 
-  cbv_uav_descriptor_size_ =
+  cbv_srv_uav_handle_size_ =
       device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-  uav_cpu_handle_ = cbv_uav_heap_->GetCPUDescriptorHandleForHeapStart();
-  uav_gpu_handle_ = cbv_uav_heap_->GetGPUDescriptorHandleForHeapStart();
+  CD3DX12_CPU_DESCRIPTOR_HANDLE cpu_handle(cbv_srv_uav_heap_->GetCPUDescriptorHandleForHeapStart());
+  CD3DX12_GPU_DESCRIPTOR_HANDLE gpu_handle(cbv_srv_uav_heap_->GetGPUDescriptorHandleForHeapStart());
+
+  uav_cpu_handle_ = cpu_handle;
+  uav_gpu_handle_ = gpu_handle;
+
+  cpu_handle.Offset(cbv_srv_uav_handle_size_);
+  gpu_handle.Offset(cbv_srv_uav_handle_size_);
+
+  index_buffer_cpu_handle_ = cpu_handle;
+  index_buffer_gpu_handle_ = gpu_handle;
+
+  cpu_handle.Offset(cbv_srv_uav_handle_size_);
+  gpu_handle.Offset(cbv_srv_uav_handle_size_);
+
+  vertex_buffer_cpu_handle_ = cpu_handle;
+  vertex_buffer_gpu_handle_ = gpu_handle;
 }
 
 void App::InitData() {
@@ -282,7 +299,7 @@ void App::InitData() {
   }
 }
 
-void App::CreateBuffersAndViews() {
+void App::CreateBuffersAndViews() {;
   for (int i = 0; i < kNumFrames; ++i) {
     ThrowIfFailed(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&frames_[i].swap_chain_buffer)));
   }
@@ -344,6 +361,36 @@ void App::CreateBuffersAndViews() {
     device_->CreateUnorderedAccessView(raytracing_output_.Get(), nullptr, &uav_desc,
                                        uav_cpu_handle_);
   }
+
+  {
+    auto const& first_mesh_part = model_->meshes[0]->opaqueMeshParts[0];
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
+    desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    desc.Format = DXGI_FORMAT_R32_TYPELESS;
+    desc.Buffer.NumElements = first_mesh_part->indexBufferSize / 4;
+    desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+    desc.Buffer.StructureByteStride = 0;
+
+    device_->CreateShaderResourceView(first_mesh_part->staticIndexBuffer.Get(), &desc,
+                                      index_buffer_cpu_handle_);
+  }
+
+  {
+    auto const& first_mesh_part = model_->meshes[0]->opaqueMeshParts[0];
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
+    desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    desc.Format = DXGI_FORMAT_UNKNOWN;
+    desc.Buffer.NumElements = first_mesh_part->vertexCount;
+    desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    desc.Buffer.StructureByteStride = first_mesh_part->vertexStride;
+
+    device_->CreateShaderResourceView(first_mesh_part->staticVertexBuffer.Get(), &desc,
+                                      vertex_buffer_cpu_handle_);
+  }
 }
 
 void App::CreateShaderTables() {
@@ -385,9 +432,8 @@ void App::CreateShaderTables() {
   }
 
   {
-    UINT offset_to_material_index = Align(shader_identifier_size, sizeof(UINT32));
-
-    hit_group_shader_record_size_ = Align(offset_to_material_index + sizeof(UINT32),
+    UINT aligned_identifier_size = Align(shader_identifier_size, sizeof(UINT32));
+    hit_group_shader_record_size_ = Align(aligned_identifier_size + sizeof(BLASConstants),
                                           D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
@@ -400,19 +446,24 @@ void App::CreateShaderTables() {
                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
                                                     IID_PPV_ARGS(&hit_group_shader_table_)));
 
-    uint8_t* buffer_ptr;
+    uint8_t* ptr;
     ThrowIfFailed(hit_group_shader_table_->Map(0, nullptr,
-                                                reinterpret_cast<void**>(&buffer_ptr)));
+                                                reinterpret_cast<void**>(&ptr)));
 
     for (auto& mesh : model_->meshes) {
+      uint32_t base_ib_index = 0;
+
       for (auto& mesh_part : mesh->opaqueMeshParts) {
-        memcpy(buffer_ptr, hit_group_shader_identifier, shader_identifier_size);
+        memcpy(ptr, hit_group_shader_identifier, shader_identifier_size);
 
-        UINT32* material_index_ptr =
-            reinterpret_cast<UINT32*>(buffer_ptr + offset_to_material_index);
-        *material_index_ptr = mesh_part->materialIndex;
+        BLASConstants* constants_ptr =
+            reinterpret_cast<BLASConstants*>(ptr + aligned_identifier_size);
+        constants_ptr->material_index = mesh_part->materialIndex;
+        constants_ptr->base_ib_index = base_ib_index;
 
-        buffer_ptr += hit_group_shader_record_size_;
+        ptr += hit_group_shader_record_size_;
+
+        base_ib_index += mesh_part->indexCount;
       }
     }
 
@@ -600,13 +651,14 @@ void App::RenderFrame() {
 
   dxr_command_list_->SetComputeRootSignature(global_root_signature_.Get());
 
-  ID3D12DescriptorHeap* descriptor_heaps[] = { cbv_uav_heap_.Get() };
+  ID3D12DescriptorHeap* descriptor_heaps[] = { cbv_srv_uav_heap_.Get() };
   dxr_command_list_->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
 
   dxr_command_list_->SetComputeRootDescriptorTable(0, uav_gpu_handle_);
   dxr_command_list_->SetComputeRootShaderResourceView(
       1, top_level_acceleration_structure_->GetGPUVirtualAddress());
   dxr_command_list_->SetComputeRootConstantBufferView(2, materials_buffer_->GetGPUVirtualAddress());
+  dxr_command_list_->SetComputeRootDescriptorTable(3, index_buffer_gpu_handle_);
 
   D3D12_DISPATCH_RAYS_DESC dispatch_desc{};
 

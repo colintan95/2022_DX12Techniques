@@ -12,6 +12,11 @@ struct Material {
   DirectX::XMFLOAT4 diffuse_color;
 };
 
+struct BLASConstants {
+  UINT material_index;
+  UINT base_ib_index;
+};
+
 class App {
 public:
   App(HWND hwnd);
@@ -67,8 +72,8 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12StateObject> dxr_state_object_;
 
-   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> cbv_uav_heap_;
-   UINT cbv_uav_descriptor_size_ = 0;
+   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> cbv_srv_uav_heap_;
+   UINT cbv_srv_uav_handle_size_ = 0;
 
    CD3DX12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle_;
    CD3DX12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle_;
@@ -78,6 +83,12 @@ private:
 
    Microsoft::WRL::ComPtr<ID3D12Resource> materials_buffer_;
    UINT materials_buffer_size_ = 0;
+
+   CD3DX12_CPU_DESCRIPTOR_HANDLE index_buffer_cpu_handle_;
+   CD3DX12_GPU_DESCRIPTOR_HANDLE index_buffer_gpu_handle_;
+
+   CD3DX12_CPU_DESCRIPTOR_HANDLE vertex_buffer_cpu_handle_;
+   CD3DX12_GPU_DESCRIPTOR_HANDLE vertex_buffer_gpu_handle_;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> raytracing_output_;
 
