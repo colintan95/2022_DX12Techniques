@@ -196,7 +196,7 @@ void App::CreatePipeline() {
 
   CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT* shader_config =
       pipeline_desc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-  UINT payload_size = sizeof(float) * 4;
+  UINT payload_size = sizeof(float) * 6;
   UINT attribute_size = sizeof(float) * 2;
   shader_config->Config(payload_size, attribute_size);
 
@@ -228,7 +228,7 @@ void App::CreatePipeline() {
 
   CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT* pipeline_config =
       pipeline_desc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-  UINT max_recursion_depth = 1;
+  UINT max_recursion_depth = 2;
   pipeline_config->Config(max_recursion_depth);
 
   ThrowIfFailed(dxr_device_->CreateStateObject(pipeline_desc, IID_PPV_ARGS(&dxr_state_object_)));
@@ -272,9 +272,11 @@ void App::InitData() {
       DirectX::XMMatrixRotationZ(-camera_roll_);
 
   DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
-  DirectX::XMMATRIX view_mat = DirectX::XMMatrixTranslation(0.f, -1.f, -4.f) * camera_view_mat;
+  // DirectX::XMMATRIX view_mat = DirectX::XMMatrixTranslation(0.f, 0.f, -4.f) * camera_view_mat;
 
-  DirectX::XMStoreFloat3x4(&world_view_mat_, world_mat * view_mat);
+  // DirectX::XMStoreFloat3x4(&world_view_mat_, world_mat * view_mat);
+
+  DirectX::XMStoreFloat3x4(&world_view_mat_, world_mat);
 
   graphics_memory_ = std::make_unique<DirectX::GraphicsMemory>(device_.Get());
   model_ = DirectX::Model::CreateFromSDKMESH(device_.Get(), L"cornell_box.sdkmesh");
