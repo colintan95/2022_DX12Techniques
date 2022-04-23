@@ -1,7 +1,7 @@
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 
-constexpr int kNumFrames = 3;
+constexpr int k_NumFrames = 3;
 
 constexpr int kWindowWidth = 1024;
 constexpr int kWindowHeight = 768;

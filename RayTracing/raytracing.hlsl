@@ -41,9 +41,9 @@ void RaygenShader() {
   float2 lerp_values = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
 
   float viewport_x =
-      lerp(ray_gen_constants.viewport.left, ray_gen_constants.viewport.right, lerp_values.x);
+      lerp(ray_gen_constants.Viewport.left, ray_gen_constants.Viewport.right, lerp_values.x);
   float viewport_y =
-      lerp(ray_gen_constants.viewport.top, ray_gen_constants.viewport.bottom, lerp_values.y);
+      lerp(ray_gen_constants.Viewport.top, ray_gen_constants.Viewport.bottom, lerp_values.y);
 
   float3 ray_dir = float3(viewport_x * 0.414f, viewport_y * 0.414f, -1.f);
   float3 origin = float3(0, 1, 4.f);
