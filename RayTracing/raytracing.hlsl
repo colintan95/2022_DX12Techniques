@@ -7,8 +7,8 @@ RWTexture2D<float4> RenderTarget : register(u0);
 ConstantBuffer<RayGenConstantBuffer> ray_gen_constants : register(b0);
 
 struct Material {
-  float4 ambient_color;
-  float4 diffuse_color;
+  float4 AmbientColor;
+  float4 DiffuseColor;
 };
 
 cbuffer Materials : register(b1) {
@@ -21,8 +21,8 @@ cbuffer MaterialIndex : register(b2) {
 };
 
 struct Vertex {
-  float3 position;
-  float3 normal;
+  float3 Position;
+  float3 Normal;
 };
 
 ByteAddressBuffer index_buffer : register(t1);
@@ -31,32 +31,30 @@ StructuredBuffer<Vertex> vertex_buffer : register(t2);
 typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 
 struct RayPayload {
-  float4 color;
-  float is_shadow;
-  float shadow_hit_dist;
+  float4 Color;
+  float IsShadow;
+  float ShadowHitDist;
 };
 
 [shader("raygeneration")]
 void RaygenShader() {
-  float2 lerp_values = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
+  float2 lerpValues = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
 
-  float viewport_x = lerp(ray_gen_constants.Viewport.Left, ray_gen_constants.Viewport.Right,
-                          lerp_values.x);
-  float viewport_y = lerp(ray_gen_constants.Viewport.Top, ray_gen_constants.Viewport.Bottom,
-                          lerp_values.y);
-
-  float3 ray_dir = float3(viewport_x * 0.414f, viewport_y * 0.414f, -1.f);
-  float3 origin = float3(0, 1, 4.f);
+  float viewportX = lerp(ray_gen_constants.Viewport.Left, ray_gen_constants.Viewport.Right,
+                          lerpValues.x);
+  float viewportY = lerp(ray_gen_constants.Viewport.Top, ray_gen_constants.Viewport.Bottom,
+                          lerpValues.y);
 
   RayDesc ray;
-  ray.Origin = origin;
-  ray.Direction = ray_dir;
+  ray.Origin = float3(0, 1, 4.f);
+  ray.Direction = float3(viewportX * 0.414f, viewportY * 0.414f, -1.f);
   ray.TMin = 0.001;
   ray.TMax = 10000.0;
   RayPayload payload = { float4(0, 0, 0, 0), 0, 0 };
+
   TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 
-  RenderTarget[DispatchRaysIndex().xy] = payload.color;
+  RenderTarget[DispatchRaysIndex().xy] = payload.Color;
 }
 
 // Taken from Microsoft sample.
@@ -101,53 +99,52 @@ float3 HitAttribute(float3 vertexAttribute[3], IntersectAttributes attr)
 
 [shader("closesthit")]
 void ClosestHitShader(inout RayPayload payload, IntersectAttributes attr) {
-  if (payload.is_shadow > 0.5) {
-    payload.shadow_hit_dist = length(RayTCurrent() * WorldRayDirection());
+  if (payload.IsShadow > 0.5) {
+    payload.ShadowHitDist = length(RayTCurrent() * WorldRayDirection());
   } else {
     float3 barycentrics = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x,
       attr.barycentrics.y);
 
     // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
-    uint ib_index_bytes = PrimitiveIndex() * 6 + base_ib_index * 2;
+    uint ibIndexBytes = PrimitiveIndex() * 6 + base_ib_index * 2;
 
-    const uint3 indices = Load3x16BitIndices(ib_index_bytes);
+    const uint3 indices = Load3x16BitIndices(ibIndexBytes);
 
-    float3 normals[3] = {
-      vertex_buffer[indices[0]].normal,
-      vertex_buffer[indices[1]].normal,
-      vertex_buffer[indices[2]].normal
+    float3 triangleNormals[3] = {
+      vertex_buffer[indices[0]].Normal,
+      vertex_buffer[indices[1]].Normal,
+      vertex_buffer[indices[2]].Normal
     };
 
-    float3 normal = normalize(HitAttribute(normals, attr));
+    float3 normal = normalize(HitAttribute(triangleNormals, attr));
 
-    float3 hit_pos = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
+    float3 hitPos = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
 
-    float3 light_pos = float3(0.0, 1.9, 0.0);
-    float3 light_dist_vec = light_pos - hit_pos;
-    float3 light_dir = normalize(light_dist_vec);
+    float3 lightPos = float3(0.0, 1.9, 0.0);
+    float3 lightDistVec = lightPos - hitPos;
+    float3 lightDir = normalize(lightDistVec);
 
     Material mtl = materials[material_index];
 
-    float3 ambient = mtl.ambient_color.rgb;
+    float3 ambient = mtl.AmbientColor.rgb;
+    float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;
 
-    float diffuse_coeff = clamp(dot(light_dir, normal), 0.0, 1.0);
-    float3 diffuse = diffuse_coeff * mtl.diffuse_color.rgb;
+    RayDesc shadowRay;
+    shadowRay.Origin = hitPos;
+    shadowRay.Direction = lightDir;
+    shadowRay.TMin = 0.001;
+    shadowRay.TMax = 10000.0;
+    RayPayload shadowPayload = { float4(0, 0, 0, 0), 1, 50.0 };
 
-    RayDesc shadow_ray;
-    shadow_ray.Origin = hit_pos;
-    shadow_ray.Direction = light_dir;
-    shadow_ray.TMin = 0.001;
-    shadow_ray.TMax = 10000.0;
-    RayPayload shadow_payload = { float4(0, 0, 0, 0), 1, 50.0 };
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, shadow_ray, shadow_payload);
+    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, shadowRay, shadowPayload);
 
-    float is_illuminated = shadow_payload.shadow_hit_dist > length(light_dist_vec) ? 1.0 : 0.0;
+    float isIlluminated = shadowPayload.ShadowHitDist > length(lightDistVec) ? 1.0 : 0.0;
 
-    payload.color = float4(0.3 * ambient + is_illuminated * diffuse, 1);
+    payload.Color = float4(0.3 * ambient + isIlluminated * diffuse, 1);
   }
 }
 
 [shader("miss")]
 void MissShader(inout RayPayload payload) {
-  payload.color = float4(0, 0, 0, 1);
+  payload.Color = float4(0, 0, 0, 1);
 }
