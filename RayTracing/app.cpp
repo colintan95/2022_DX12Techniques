@@ -626,70 +626,69 @@ void App::RenderFrame() {
 
   m_dxrCommandList->SetComputeRootSignature(m_globalRootSignature.Get());
 
-  ID3D12DescriptorHeap* descriptor_heaps[] = { m_cbvSrvUavHeap.Get() };
-  m_dxrCommandList->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
+  ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvSrvUavHeap.Get() };
+  m_dxrCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
   m_dxrCommandList->SetComputeRootDescriptorTable(0, m_raytracingOutputGpuHandle);
   m_dxrCommandList->SetComputeRootShaderResourceView(1, m_tlas->GetGPUVirtualAddress());
   m_dxrCommandList->SetComputeRootConstantBufferView(2, m_materialsBuffer->GetGPUVirtualAddress());
   m_dxrCommandList->SetComputeRootDescriptorTable(3, m_indexBufferGpuHandle);
 
-  D3D12_DISPATCH_RAYS_DESC dispatch_desc{};
+  D3D12_DISPATCH_RAYS_DESC dispatchDesc{};
 
-  dispatch_desc.RayGenerationShaderRecord.StartAddress =
-      m_rayGenShaderTable->GetGPUVirtualAddress();
-  dispatch_desc.RayGenerationShaderRecord.SizeInBytes = m_rayGenShaderTable->GetDesc().Width;
+  dispatchDesc.RayGenerationShaderRecord.StartAddress = m_rayGenShaderTable->GetGPUVirtualAddress();
+  dispatchDesc.RayGenerationShaderRecord.SizeInBytes = m_rayGenShaderTable->GetDesc().Width;
 
-  dispatch_desc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
-  dispatch_desc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
-  dispatch_desc.HitGroupTable.StrideInBytes = m_hitGroupShaderRecordSize;
+  dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
+  dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
+  dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderRecordSize;
 
-  dispatch_desc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
-  dispatch_desc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-  dispatch_desc.MissShaderTable.StrideInBytes = dispatch_desc.MissShaderTable.SizeInBytes;
+  dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
+  dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
+  dispatchDesc.MissShaderTable.StrideInBytes = dispatchDesc.MissShaderTable.SizeInBytes;
 
-  dispatch_desc.Width = k_windowWidth;
-  dispatch_desc.Height = k_windowHeight;
-  dispatch_desc.Depth = 1;
+  dispatchDesc.Width = k_windowWidth;
+  dispatchDesc.Height = k_windowHeight;
+  dispatchDesc.Depth = 1;
 
   m_dxrCommandList->SetPipelineState1(m_dxrStateObject.Get());
-  m_dxrCommandList->DispatchRays(&dispatch_desc);
+  m_dxrCommandList->DispatchRays(&dispatchDesc);
 
   {
-    D3D12_RESOURCE_BARRIER pre_copy_barriers[2] = {};
-    pre_copy_barriers[0] =
+    D3D12_RESOURCE_BARRIER preCopyBarriers[2] = {};
+    preCopyBarriers[0] =
         CD3DX12_RESOURCE_BARRIER::Transition(m_Frames[m_frameIndex].SwapChainBuffer.Get(),
                                              D3D12_RESOURCE_STATE_RENDER_TARGET,
                                              D3D12_RESOURCE_STATE_COPY_DEST);
-    pre_copy_barriers[1] =
+    preCopyBarriers[1] =
         CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutput.Get(),
                                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                              D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-    m_dxrCommandList->ResourceBarrier(_countof(pre_copy_barriers), pre_copy_barriers);
+    m_dxrCommandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
   }
 
   m_dxrCommandList->CopyResource(m_Frames[m_frameIndex].SwapChainBuffer.Get(),
                                  m_raytracingOutput.Get());
 
   {
-    D3D12_RESOURCE_BARRIER post_copy_barriers[2] = {};
-    post_copy_barriers[0] =
+    D3D12_RESOURCE_BARRIER postCopyBarriers[2] = {};
+    postCopyBarriers[0] =
         CD3DX12_RESOURCE_BARRIER::Transition(m_Frames[m_frameIndex].SwapChainBuffer.Get(),
                                              D3D12_RESOURCE_STATE_COPY_DEST,
                                              D3D12_RESOURCE_STATE_PRESENT);
-    post_copy_barriers[1] =
+    postCopyBarriers[1] =
         CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutput.Get(),
                                              D3D12_RESOURCE_STATE_COPY_SOURCE,
                                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-    m_dxrCommandList->ResourceBarrier(_countof(post_copy_barriers), post_copy_barriers);
+    m_dxrCommandList->ResourceBarrier(_countof(postCopyBarriers), postCopyBarriers);
   }
 
   m_dxrCommandList->Close();
 
-  ID3D12CommandList* command_lists[] = { m_dxrCommandList.Get() };
-  m_commandQueue->ExecuteCommandLists(_countof(command_lists), command_lists);
+  ID3D12CommandList* commandLists[] = { m_dxrCommandList.Get() };
+  m_commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
   ThrowIfFailed(m_swapChain->Present(1, 0));
 
@@ -711,11 +710,11 @@ void App::MoveToNextFrame() {
 }
 
 void App::WaitForGpu() {
-  const UINT64 wait_value = m_nextFenceValue;
+  const UINT64 waitValue = m_nextFenceValue;
 
-  ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), wait_value));
+  ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), waitValue));
   ++m_nextFenceValue;
 
-  ThrowIfFailed(m_fence->SetEventOnCompletion(wait_value, m_fenceEvent));
+  ThrowIfFailed(m_fence->SetEventOnCompletion(waitValue, m_fenceEvent));
   WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
 }

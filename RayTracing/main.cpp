@@ -18,20 +18,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
 }  // namespace
 
 _Use_decl_annotations_
-int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE prev_hinstance, LPSTR cmd_line, int cmd_show) {
-  WNDCLASSEX window_class = {};
-  window_class.cbSize = sizeof(WNDCLASSEX);
-  window_class.style = CS_HREDRAW | CS_VREDRAW;
-  window_class.lpfnWndProc = WindowProc;
-  window_class.hInstance = hinstance;
-  window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
-  window_class.lpszClassName = L"DeferredShading";
-  RegisterClassEx(&window_class);
+int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE prevHinstance, LPSTR cmdLine, int cmdShow) {
+  WNDCLASSEX windowClass{};
+  windowClass.cbSize = sizeof(WNDCLASSEX);
+  windowClass.style = CS_HREDRAW | CS_VREDRAW;
+  windowClass.lpfnWndProc = WindowProc;
+  windowClass.hInstance = hinstance;
+  windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+  windowClass.lpszClassName = L"RayTracing";
+  RegisterClassEx(&windowClass);
 
-  HWND hwnd = CreateWindow(window_class.lpszClassName, L"Ray Tracing", WS_OVERLAPPEDWINDOW,
+  HWND hwnd = CreateWindow(windowClass.lpszClassName, L"Ray Tracing", WS_OVERLAPPEDWINDOW,
                            CW_USEDEFAULT, CW_USEDEFAULT, k_windowWidth, k_windowHeight, nullptr,
                            nullptr, hinstance, nullptr);
-  ShowWindow(hwnd, cmd_show);
+  ShowWindow(hwnd, cmdShow);
 
   App app(hwnd);
 

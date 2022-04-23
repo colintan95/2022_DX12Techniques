@@ -2,10 +2,10 @@
 #define RAYTRACING_SHADER_H_
 
 struct Viewport {
-  float left;
-  float top;
-  float right;
-  float bottom;
+  float Left;
+  float Top;
+  float Right;
+  float Bottom;
 };
 
 struct RayGenConstantBuffer {
