@@ -158,7 +158,7 @@ void App::CreatePipeline() {
   // Closest hit root signature creation.
   {
     CD3DX12_ROOT_PARAMETER1 rootParam{};
-    rootParam.InitAsConstants(SizeOfInUint32(HitGroupConstants), 1, 0);
+    rootParam.InitAsConstants(SizeOfInUint32(ClosestHitConstants), 1, 0);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init_1_1(1, &rootParam, 0, nullptr,
@@ -447,7 +447,7 @@ void App::CreateShaderTables() {
 
   {
     UINT alignedIdentifierSize = Align(shaderIdentifierSize, sizeof(UINT32));
-    m_hitGroupShaderRecordSize = Align(alignedIdentifierSize + sizeof(HitGroupConstants),
+    m_hitGroupShaderRecordSize = Align(alignedIdentifierSize + sizeof(ClosestHitConstants),
                                        D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
@@ -467,8 +467,8 @@ void App::CreateShaderTables() {
       for (auto& mesh_part : mesh->opaqueMeshParts) {
         memcpy(ptr, hitGroupShaderIdentifier, shaderIdentifierSize);
 
-        HitGroupConstants* constantsPtr =
-            reinterpret_cast<HitGroupConstants*>(ptr + shaderIdentifierSize);
+        ClosestHitConstants* constantsPtr =
+            reinterpret_cast<ClosestHitConstants*>(ptr + shaderIdentifierSize);
         constantsPtr->MaterialIndex = mesh_part->materialIndex;
         constantsPtr->BaseIbIndex = baseIbIndex;
 
@@ -505,8 +505,6 @@ void App::CreateAccelerationStructure() {
 
   for (auto& mesh : m_model->meshes) {
     for (auto& meshPart : mesh->opaqueMeshParts) {
-      // TODO: Right now the vertex buffers also contains the normals. See if we can separate the
-      // positions from the normals and uv coords when loading the model.
       D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc{};
       geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
       geometryDesc.Triangles.IndexBuffer =

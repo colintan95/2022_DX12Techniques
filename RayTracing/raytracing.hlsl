@@ -5,7 +5,7 @@ struct Material {
   float4 DiffuseColor;
 };
 
-struct HitGroupConstants {
+struct ClosestHitConstants {
   uint MaterialIndex;
   uint BaseIbIndex;
 };
@@ -25,7 +25,7 @@ struct RayPayload {
 
 // Global descriptors.
 
-RaytracingAccelerationStructure s_scene : register(t0, space0);
+RaytracingAccelerationStructure s_scene : register(t0);
 RWTexture2D<float4> s_raytracingOutput : register(u0);
 
 ByteAddressBuffer s_indexBuffer : register(t1);
@@ -36,9 +36,9 @@ StructuredBuffer<Material> s_materials : register(t3);
 
 ConstantBuffer<RayGenConstantBuffer> s_rayGenConstants : register(b0);
 
-// Hit group descriptors.
+// Closest hit descriptors.
 
-ConstantBuffer<HitGroupConstants> s_hitGroupConstants : register(b1);
+ConstantBuffer<ClosestHitConstants> s_closestHitConstants : register(b1);
 
 [shader("raygeneration")]
 void RaygenShader() {
@@ -110,7 +110,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAtt
                                  intersectAttr.barycentrics.x, intersectAttr.barycentrics.y);
 
     // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
-    uint ibIndexBytes = PrimitiveIndex() * 6 + s_hitGroupConstants.BaseIbIndex * 2;
+    uint ibIndexBytes = PrimitiveIndex() * 6 + s_closestHitConstants.BaseIbIndex * 2;
 
     const uint3 indices = Load3x16BitIndices(ibIndexBytes);
 
@@ -128,7 +128,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAtt
     float3 lightDistVec = lightPos - hitPos;
     float3 lightDir = normalize(lightDistVec);
 
-    Material mtl = s_materials[s_hitGroupConstants.MaterialIndex];
+    Material mtl = s_materials[s_closestHitConstants.MaterialIndex];
 
     float3 ambient = mtl.AmbientColor.rgb;
     float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;

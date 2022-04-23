@@ -12,7 +12,7 @@ struct Material {
   DirectX::XMFLOAT4 DiffuseColor;
 };
 
-struct HitGroupConstants {
+struct ClosestHitConstants {
   UINT MaterialIndex;
   UINT BaseIbIndex;
 };
