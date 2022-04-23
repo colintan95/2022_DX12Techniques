@@ -1,31 +1,19 @@
 #include "raytracing_shader.h"
 
-RaytracingAccelerationStructure s_scene : register(t0, space0);
-RWTexture2D<float4> s_raytracingOutput : register(u0);
-
-ConstantBuffer<RayGenConstantBuffer> s_rayGenConstants : register(b0);
-
 struct Material {
   float4 AmbientColor;
   float4 DiffuseColor;
 };
 
-cbuffer Materials : register(b1) {
-  Material materials[32];
-};
-
-cbuffer MaterialIndex : register(b2) {
-  uint material_index;
-  uint base_ib_index;
+struct HitGroupConstants {
+  uint MaterialIndex;
+  uint BaseIbIndex;
 };
 
 struct Vertex {
   float3 Position;
   float3 Normal;
 };
-
-ByteAddressBuffer s_indexBuffer : register(t1);
-StructuredBuffer<Vertex> s_vertexBuffer : register(t2);
 
 typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 
@@ -34,6 +22,26 @@ struct RayPayload {
   float IsShadow;
   float ShadowHitDist;
 };
+
+// Global descriptors.
+
+RaytracingAccelerationStructure s_scene : register(t0, space0);
+RWTexture2D<float4> s_raytracingOutput : register(u0);
+
+ByteAddressBuffer s_indexBuffer : register(t1);
+StructuredBuffer<Vertex> s_vertexBuffer : register(t2);
+
+cbuffer Materials : register(b1) {
+  Material materials[32];
+};
+
+// Ray generation descriptors.
+
+ConstantBuffer<RayGenConstantBuffer> s_rayGenConstants : register(b0);
+
+// Hit group descriptors.
+
+ConstantBuffer<HitGroupConstants> s_hitGroupConstants : register(b2);
 
 [shader("raygeneration")]
 void RaygenShader() {
@@ -105,7 +113,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAtt
                                  intersectAttr.barycentrics.x, intersectAttr.barycentrics.y);
 
     // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
-    uint ibIndexBytes = PrimitiveIndex() * 6 + base_ib_index * 2;
+    uint ibIndexBytes = PrimitiveIndex() * 6 + s_hitGroupConstants.BaseIbIndex * 2;
 
     const uint3 indices = Load3x16BitIndices(ibIndexBytes);
 
@@ -123,7 +131,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAtt
     float3 lightDistVec = lightPos - hitPos;
     float3 lightDir = normalize(lightDistVec);
 
-    Material mtl = materials[material_index];
+    Material mtl = materials[s_hitGroupConstants.MaterialIndex];
 
     float3 ambient = mtl.AmbientColor.rgb;
     float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;

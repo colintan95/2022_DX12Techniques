@@ -74,7 +74,7 @@ void App::InitDeviceAndSwapChain() {
 
   ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 
-   DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
+  DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
   swapChainDesc.BufferCount = k_numFrames;
   swapChainDesc.Width = k_windowWidth;
   swapChainDesc.Height = k_windowHeight;
