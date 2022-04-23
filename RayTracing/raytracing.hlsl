@@ -30,10 +30,7 @@ RWTexture2D<float4> s_raytracingOutput : register(u0);
 
 ByteAddressBuffer s_indexBuffer : register(t1);
 StructuredBuffer<Vertex> s_vertexBuffer : register(t2);
-
-cbuffer Materials : register(b1) {
-  Material materials[32];
-};
+StructuredBuffer<Material> s_materials : register(t3);
 
 // Ray generation descriptors.
 
@@ -131,7 +128,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAtt
     float3 lightDistVec = lightPos - hitPos;
     float3 lightDir = normalize(lightDistVec);
 
-    Material mtl = materials[s_hitGroupConstants.MaterialIndex];
+    Material mtl = s_materials[s_hitGroupConstants.MaterialIndex];
 
     float3 ambient = mtl.AmbientColor.rgb;
     float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;

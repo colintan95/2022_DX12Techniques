@@ -73,6 +73,8 @@ private:
    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_cbvSrvUavHeap;
    UINT m_cbvSrvUavOffsetSize = 0;
 
+   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_uploadBuffers;
+
    CD3DX12_CPU_DESCRIPTOR_HANDLE m_raytracingOutputCpuHandle;
    CD3DX12_GPU_DESCRIPTOR_HANDLE m_raytracingOutputGpuHandle;
 
@@ -84,6 +86,9 @@ private:
 
    CD3DX12_CPU_DESCRIPTOR_HANDLE m_vertexBufferCpuHandle;
    CD3DX12_GPU_DESCRIPTOR_HANDLE m_vertexBufferGpuHandle;
+
+   CD3DX12_CPU_DESCRIPTOR_HANDLE m_materialsBufferCpuHandle;
+   CD3DX12_GPU_DESCRIPTOR_HANDLE m_materialsBufferGpuHandle;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> m_raytracingOutput;
 

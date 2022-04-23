@@ -116,13 +116,12 @@ void App::CreatePipeline() {
   {
     CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
-    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1);
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[4] = {};
+    CD3DX12_ROOT_PARAMETER1 rootParams[3] = {};
     rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
     rootParams[1].InitAsShaderResourceView(0);
-    rootParams[2].InitAsConstantBufferView(1);
-    rootParams[3].InitAsDescriptorTable(1, &ranges[1]);
+    rootParams[2].InitAsDescriptorTable(1, &ranges[1]);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
@@ -237,7 +236,7 @@ void App::CreatePipeline() {
 
 void App::CreateDescriptorHeap() {
   D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-  heapDesc.NumDescriptors = 3;
+  heapDesc.NumDescriptors = 4;
   heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -263,6 +262,12 @@ void App::CreateDescriptorHeap() {
 
   m_vertexBufferCpuHandle = cpuHandle;
   m_vertexBufferGpuHandle = gpuHandle;
+
+  cpuHandle.Offset(m_cbvSrvUavOffsetSize);
+  gpuHandle.Offset(m_cbvSrvUavOffsetSize);
+
+  m_materialsBufferCpuHandle = cpuHandle;
+  m_materialsBufferGpuHandle = gpuHandle;
 }
 
 void App::InitData() {
@@ -317,37 +322,45 @@ void App::CreateBuffersAndViews() {;
   {
     UINT bufferSize = Align(sizeof(Material) * m_materials.size(),
                             D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
 
-    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+    ComPtr<ID3D12Resource> uploadBuffer;
 
-    ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
-                                                    &resourceDesc,
+    CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+    ThrowIfFailed(m_device->CreateCommittedResource(&uploadHeapProps, D3D12_HEAP_FLAG_NONE,
+                                                    &bufferDesc,
                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                    IID_PPV_ARGS(&m_materialsBuffer)));
+                                                    IID_PPV_ARGS(&uploadBuffer)));
 
-    DirectX::XMFLOAT4X4* ptr;
-    ThrowIfFailed(m_materialsBuffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr)));
+    CD3DX12_HEAP_PROPERTIES bufferHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+    ThrowIfFailed(m_device->CreateCommittedResource(&bufferHeapProps, D3D12_HEAP_FLAG_NONE,
+                                                    &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                                    nullptr, IID_PPV_ARGS(&m_materialsBuffer)));
 
-    std::memcpy(ptr, m_materials.data(), m_materials.size() * sizeof(Material));
+    D3D12_SUBRESOURCE_DATA subresourceData{};
+    subresourceData.pData = m_materials.data();
+    subresourceData.RowPitch = sizeof(Material);
+    subresourceData.SlicePitch = subresourceData.RowPitch;
 
-    m_materialsBuffer->Unmap(0, nullptr);
+    UpdateSubresources<1>(m_commandList.Get(), m_materialsBuffer.Get(), uploadBuffer.Get(), 0, 0, 1,
+                          &subresourceData);
+
+    m_uploadBuffers.push_back(uploadBuffer);
   }
 
   {
-    CD3DX12_RESOURCE_DESC output_desc =
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC bufferDesc =
         CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, k_windowWidth, k_windowHeight, 1,
                                      1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
-
-    ThrowIfFailed(m_device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &output_desc,
+    ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
                                                    IID_PPV_ARGS(&m_raytracingOutput)));
-    D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc{};
-    uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 
-    m_device->CreateUnorderedAccessView(m_raytracingOutput.Get(), nullptr, &uav_desc,
+    m_device->CreateUnorderedAccessView(m_raytracingOutput.Get(), nullptr, &uavDesc,
                                         m_raytracingOutputCpuHandle);
   }
 
@@ -379,6 +392,19 @@ void App::CreateBuffersAndViews() {;
 
     m_device->CreateShaderResourceView(firstMeshPart->staticVertexBuffer.Get(), &srvDesc,
                                        m_vertexBufferCpuHandle);
+  }
+
+  {
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    srvDesc.Buffer.NumElements = m_materials.size();
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    srvDesc.Buffer.StructureByteStride = sizeof(Material);
+
+    m_device->CreateShaderResourceView(m_materialsBuffer.Get(), &srvDesc,
+                                       m_materialsBufferCpuHandle);
   }
 }
 
@@ -607,6 +633,8 @@ void App::CreateAccelerationStructure() {
   m_commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
   WaitForGpu();
+
+  m_uploadBuffers.clear();
 }
 
 void App::Cleanup() {
@@ -631,8 +659,7 @@ void App::RenderFrame() {
 
   m_dxrCommandList->SetComputeRootDescriptorTable(0, m_raytracingOutputGpuHandle);
   m_dxrCommandList->SetComputeRootShaderResourceView(1, m_tlas->GetGPUVirtualAddress());
-  m_dxrCommandList->SetComputeRootConstantBufferView(2, m_materialsBuffer->GetGPUVirtualAddress());
-  m_dxrCommandList->SetComputeRootDescriptorTable(3, m_indexBufferGpuHandle);
+  m_dxrCommandList->SetComputeRootDescriptorTable(2, m_indexBufferGpuHandle);
 
   D3D12_DISPATCH_RAYS_DESC dispatchDesc{};
 
