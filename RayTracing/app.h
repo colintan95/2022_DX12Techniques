@@ -12,7 +12,7 @@ struct Material {
   DirectX::XMFLOAT4 DiffuseColor;
 };
 
-struct BlasConstants {
+struct HitGroupConstants {
   UINT MaterialIndex;
   UINT BaseIbIndex;
 };

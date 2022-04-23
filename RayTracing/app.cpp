@@ -158,7 +158,7 @@ void App::CreatePipeline() {
   // Closest hit root signature creation.
   {
     CD3DX12_ROOT_PARAMETER1 rootParam{};
-    rootParam.InitAsConstants(SizeOfInUint32(BlasConstants), 2, 0);
+    rootParam.InitAsConstants(SizeOfInUint32(HitGroupConstants), 1, 0);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init_1_1(1, &rootParam, 0, nullptr,
@@ -447,7 +447,7 @@ void App::CreateShaderTables() {
 
   {
     UINT alignedIdentifierSize = Align(shaderIdentifierSize, sizeof(UINT32));
-    m_hitGroupShaderRecordSize = Align(alignedIdentifierSize + sizeof(BlasConstants),
+    m_hitGroupShaderRecordSize = Align(alignedIdentifierSize + sizeof(HitGroupConstants),
                                        D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
@@ -467,7 +467,8 @@ void App::CreateShaderTables() {
       for (auto& mesh_part : mesh->opaqueMeshParts) {
         memcpy(ptr, hitGroupShaderIdentifier, shaderIdentifierSize);
 
-        BlasConstants* constantsPtr = reinterpret_cast<BlasConstants*>(ptr + shaderIdentifierSize);
+        HitGroupConstants* constantsPtr =
+            reinterpret_cast<HitGroupConstants*>(ptr + shaderIdentifierSize);
         constantsPtr->MaterialIndex = mesh_part->materialIndex;
         constantsPtr->BaseIbIndex = baseIbIndex;
 

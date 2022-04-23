@@ -38,7 +38,7 @@ ConstantBuffer<RayGenConstantBuffer> s_rayGenConstants : register(b0);
 
 // Hit group descriptors.
 
-ConstantBuffer<HitGroupConstants> s_hitGroupConstants : register(b2);
+ConstantBuffer<HitGroupConstants> s_hitGroupConstants : register(b1);
 
 [shader("raygeneration")]
 void RaygenShader() {
