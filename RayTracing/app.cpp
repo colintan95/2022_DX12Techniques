@@ -236,12 +236,12 @@ void App::CreatePipeline() {
 }
 
 void App::CreateDescriptorHeap() {
-  D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-  heap_desc.NumDescriptors = 3;
-  heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+  heapDesc.NumDescriptors = 3;
+  heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
-  m_device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&m_cbvSrvUavHeap));
+  m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvSrvUavHeap));
 
   m_cbvSrvUavOffsetSize =
       m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -352,107 +352,102 @@ void App::CreateBuffersAndViews() {;
   }
 
   {
-    auto const& first_mesh_part = m_model->meshes[0]->opaqueMeshParts[0];
+    auto const& firstMeshPart = m_model->meshes[0]->opaqueMeshParts[0];
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
-    desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    desc.Format = DXGI_FORMAT_R32_TYPELESS;
-    desc.Buffer.NumElements = first_mesh_part->indexBufferSize / 4;
-    desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-    desc.Buffer.StructureByteStride = 0;
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    srvDesc.Buffer.NumElements = firstMeshPart->indexBufferSize / 4;
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+    srvDesc.Buffer.StructureByteStride = 0;
 
-    m_device->CreateShaderResourceView(first_mesh_part->staticIndexBuffer.Get(), &desc,
+    m_device->CreateShaderResourceView(firstMeshPart->staticIndexBuffer.Get(), &srvDesc,
                                        m_indexBufferCpuHandle);
   }
 
   {
-    auto const& first_mesh_part = m_model->meshes[0]->opaqueMeshParts[0];
+    auto const& firstMeshPart = m_model->meshes[0]->opaqueMeshParts[0];
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
-    desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    desc.Format = DXGI_FORMAT_UNKNOWN;
-    desc.Buffer.NumElements = first_mesh_part->vertexCount;
-    desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-    desc.Buffer.StructureByteStride = first_mesh_part->vertexStride;
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    srvDesc.Buffer.NumElements = firstMeshPart->vertexCount;
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    srvDesc.Buffer.StructureByteStride = firstMeshPart->vertexStride;
 
-    m_device->CreateShaderResourceView(first_mesh_part->staticVertexBuffer.Get(), &desc,
+    m_device->CreateShaderResourceView(firstMeshPart->staticVertexBuffer.Get(), &srvDesc,
                                        m_vertexBufferCpuHandle);
   }
 }
 
 void App::CreateShaderTables() {
-  ComPtr<ID3D12StateObjectProperties> state_object_props;
-  ThrowIfFailed(m_dxrStateObject.As(&state_object_props));
+  ComPtr<ID3D12StateObjectProperties> stateObjectProps;
+  ThrowIfFailed(m_dxrStateObject.As(&stateObjectProps));
 
-  void* ray_gen_shader_identifier = state_object_props->GetShaderIdentifier(k_rayGenShaderName);
-  void* hit_group_shader_identifier = state_object_props->GetShaderIdentifier(k_hitGroupName);
-  void* miss_shader_identifier = state_object_props->GetShaderIdentifier(k_missShaderName);
+  void* rayGenShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_rayGenShaderName);
+  void* hitGroupShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_hitGroupName);
+  void* missShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_missShaderName);
 
-  UINT shader_identifier_size = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+  UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
   {
-    UINT shader_record_size = shader_identifier_size + sizeof(RayGenConstantBuffer);
+    UINT shaderRecordSize = shaderIdentifierSize + sizeof(RayGenConstantBuffer);
 
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(Align(shader_record_size,
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufferDesc =
+        CD3DX12_RESOURCE_DESC::Buffer(Align(shaderRecordSize,
                                             D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
 
-    ThrowIfFailed(m_device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                    &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                    IID_PPV_ARGS(&m_rayGenShaderTable)));
+    ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
+                                                    &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                    nullptr, IID_PPV_ARGS(&m_rayGenShaderTable)));
 
-    uint8_t* buffer_ptr;
-    ThrowIfFailed(m_rayGenShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+    uint8_t* ptr;
+    ThrowIfFailed(m_rayGenShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&ptr)));
 
-    memcpy(buffer_ptr, ray_gen_shader_identifier, shader_identifier_size);
-    buffer_ptr += shader_identifier_size;
-    memcpy(buffer_ptr, &m_rayGenConstants, sizeof(RayGenConstantBuffer));
+    memcpy(ptr, rayGenShaderIdentifier, shaderIdentifierSize);
+    ptr += shaderIdentifierSize;
+    memcpy(ptr, &m_rayGenConstants, sizeof(RayGenConstantBuffer));
 
     m_rayGenShaderTable->Unmap(0, nullptr);
   }
 
-  int num_meshes = 0;
+  int numMeshes = 0;
   for (auto& mesh : m_model->meshes) {
-    num_meshes += static_cast<UINT>(mesh->opaqueMeshParts.size());
+    numMeshes += static_cast<UINT>(mesh->opaqueMeshParts.size());
   }
 
   {
-    UINT aligned_identifier_size = Align(shader_identifier_size, sizeof(UINT32));
-    m_hitGroupShaderRecordSize = Align(aligned_identifier_size + sizeof(BlasConstants),
-                                          D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    UINT alignedIdentifierSize = Align(shaderIdentifierSize, sizeof(UINT32));
+    m_hitGroupShaderRecordSize = Align(alignedIdentifierSize + sizeof(BlasConstants),
+                                       D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(m_hitGroupShaderRecordSize) *
-                                      num_meshes);
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufferDesc =
+        CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(m_hitGroupShaderRecordSize) * numMeshes);
 
-    ThrowIfFailed(m_device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                    &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                    IID_PPV_ARGS(&m_hitGroupShaderTable)));
+    ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
+                                                    &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                    nullptr, IID_PPV_ARGS(&m_hitGroupShaderTable)));
 
     uint8_t* ptr;
-    ThrowIfFailed(m_hitGroupShaderTable->Map(0, nullptr,
-                                                reinterpret_cast<void**>(&ptr)));
+    ThrowIfFailed(m_hitGroupShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&ptr)));
 
     for (auto& mesh : m_model->meshes) {
-      uint32_t base_ib_index = 0;
+      uint32_t baseIbIndex = 0;
 
       for (auto& mesh_part : mesh->opaqueMeshParts) {
-        memcpy(ptr, hit_group_shader_identifier, shader_identifier_size);
+        memcpy(ptr, hitGroupShaderIdentifier, shaderIdentifierSize);
 
-        BlasConstants* constants_ptr =
-            reinterpret_cast<BlasConstants*>(ptr + aligned_identifier_size);
-        constants_ptr->MaterialIndex = mesh_part->materialIndex;
-        constants_ptr->BaseIbIndex = base_ib_index;
+        BlasConstants* constantsPtr = reinterpret_cast<BlasConstants*>(ptr + shaderIdentifierSize);
+        constantsPtr->MaterialIndex = mesh_part->materialIndex;
+        constantsPtr->BaseIbIndex = baseIbIndex;
 
         ptr += m_hitGroupShaderRecordSize;
 
-        base_ib_index += mesh_part->indexCount;
+        baseIbIndex += mesh_part->indexCount;
       }
     }
 
@@ -460,20 +455,19 @@ void App::CreateShaderTables() {
   }
 
   {
-    CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC buffer_desc =
-        CD3DX12_RESOURCE_DESC::Buffer(Align(shader_identifier_size,
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufferDesc =
+        CD3DX12_RESOURCE_DESC::Buffer(Align(shaderIdentifierSize,
                                             D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
 
-    ThrowIfFailed(m_device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE,
-                                                    &buffer_desc,
-                                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                    IID_PPV_ARGS(&m_missShaderTable)));
+    ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
+                                                    &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                    nullptr, IID_PPV_ARGS(&m_missShaderTable)));
 
-    uint8_t* buffer_ptr;
-    ThrowIfFailed(m_missShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&buffer_ptr)));
+    uint8_t* ptr;
+    ThrowIfFailed(m_missShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&ptr)));
 
-    memcpy(buffer_ptr, miss_shader_identifier, shader_identifier_size);
+    memcpy(ptr, missShaderIdentifier, shaderIdentifierSize);
 
     m_missShaderTable->Unmap(0, nullptr);
   }
