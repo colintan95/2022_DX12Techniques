@@ -159,7 +159,7 @@ void App::CreatePipeline() {
 
   {
     CD3DX12_ROOT_PARAMETER1 root_param{};
-    root_param.InitAsConstants(SizeOfInUint32(BLASConstants), 2, 0);
+    root_param.InitAsConstants(SizeOfInUint32(BlasConstants), 2, 0);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
@@ -264,37 +264,24 @@ void App::CreateDescriptorHeap() {
 }
 
 void App::InitData() {
-  camera_yaw_ = DirectX::XM_PI;
-
-  DirectX::XMMATRIX camera_view_mat =
-      DirectX::XMMatrixRotationY(-camera_yaw_) *  DirectX::XMMatrixRotationX(-camera_pitch_) *
-      DirectX::XMMatrixRotationZ(-camera_roll_);
-
-  DirectX::XMMATRIX world_mat = DirectX::XMMatrixIdentity();
-  // DirectX::XMMATRIX view_mat = DirectX::XMMatrixTranslation(0.f, 0.f, -4.f) * camera_view_mat;
-
-  // DirectX::XMStoreFloat3x4(&world_view_mat_, world_mat * view_mat);
-
-  DirectX::XMStoreFloat3x4(&m_worldViewMat, world_mat);
+  DirectX::XMStoreFloat3x4(&m_worldViewMat, DirectX::XMMatrixIdentity());
 
   m_graphicsMemory = std::make_unique<DirectX::GraphicsMemory>(m_device.Get());
   m_model = DirectX::Model::CreateFromSDKMESH(m_device.Get(), L"cornell_box.sdkmesh");
 
-  DirectX::ResourceUploadBatch resource_upload(m_device.Get());
-  resource_upload.Begin();
-  m_model->LoadStaticBuffers(m_device.Get(), resource_upload);
+  DirectX::ResourceUploadBatch resourceUpload(m_device.Get());
+  resourceUpload.Begin();
+  m_model->LoadStaticBuffers(m_device.Get(), resourceUpload);
 
-  std::future<void> resource_upload_done = resource_upload.End(m_commandQueue.Get());
-  resource_upload_done.wait();
+  std::future<void> resourceLoadDone = resourceUpload.End(m_commandQueue.Get());
+  resourceLoadDone.wait();
 
-  for (const auto& effect_info : m_model->materials) {
+  for (const auto& effectInfo : m_model->materials) {
     Material material{};
-    material.ambient_color = DirectX::XMFLOAT4(effect_info.ambientColor.x,
-                                               effect_info.ambientColor.y,
-                                               effect_info.ambientColor.z, 0.f);
-    material.diffuse_color = DirectX::XMFLOAT4(effect_info.diffuseColor.x,
-                                               effect_info.diffuseColor.y,
-                                               effect_info.diffuseColor.z, 0.f);
+    material.AmbientColor = DirectX::XMFLOAT4(effectInfo.ambientColor.x, effectInfo.ambientColor.y,
+                                              effectInfo.ambientColor.z, 0.f);
+    material.DiffuseColor = DirectX::XMFLOAT4(effectInfo.diffuseColor.x, effectInfo.diffuseColor.y,
+                                              effectInfo.diffuseColor.z, 0.f);
 
     m_materials.push_back(material);
   }
@@ -433,7 +420,7 @@ void App::CreateShaderTables() {
 
   {
     UINT aligned_identifier_size = Align(shader_identifier_size, sizeof(UINT32));
-    m_hitGroupShaderRecordSize = Align(aligned_identifier_size + sizeof(BLASConstants),
+    m_hitGroupShaderRecordSize = Align(aligned_identifier_size + sizeof(BlasConstants),
                                           D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_UPLOAD);
@@ -456,10 +443,10 @@ void App::CreateShaderTables() {
       for (auto& mesh_part : mesh->opaqueMeshParts) {
         memcpy(ptr, hit_group_shader_identifier, shader_identifier_size);
 
-        BLASConstants* constants_ptr =
-            reinterpret_cast<BLASConstants*>(ptr + aligned_identifier_size);
-        constants_ptr->material_index = mesh_part->materialIndex;
-        constants_ptr->base_ib_index = base_ib_index;
+        BlasConstants* constants_ptr =
+            reinterpret_cast<BlasConstants*>(ptr + aligned_identifier_size);
+        constants_ptr->MaterialIndex = mesh_part->materialIndex;
+        constants_ptr->BaseIbIndex = base_ib_index;
 
         ptr += m_hitGroupShaderRecordSize;
 

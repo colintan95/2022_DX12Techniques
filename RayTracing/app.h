@@ -8,13 +8,13 @@
 #include "raytracing_shader.h"
 
 struct Material {
-  DirectX::XMFLOAT4 ambient_color;
-  DirectX::XMFLOAT4 diffuse_color;
+  DirectX::XMFLOAT4 AmbientColor;
+  DirectX::XMFLOAT4 DiffuseColor;
 };
 
-struct BLASConstants {
-  UINT material_index;
-  UINT base_ib_index;
+struct BlasConstants {
+  UINT MaterialIndex;
+  UINT BaseIbIndex;
 };
 
 class App {
@@ -107,10 +107,6 @@ private:
    Frame m_Frames[k_NumFrames];
 
    RayGenConstantBuffer m_rayGenConstants;
-
-   float camera_yaw_ = 0.f;
-   float camera_pitch_ = 0.f;
-   float camera_roll_ = 0.f;
 
    DirectX::XMFLOAT3X4 m_worldViewMat;
 
