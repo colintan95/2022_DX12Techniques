@@ -1,10 +1,9 @@
 #include "raytracing_shader.h"
 
-RaytracingAccelerationStructure Scene : register(t0, space0);
+RaytracingAccelerationStructure s_scene : register(t0, space0);
+RWTexture2D<float4> s_raytracingOutput : register(u0);
 
-RWTexture2D<float4> RenderTarget : register(u0);
-
-ConstantBuffer<RayGenConstantBuffer> ray_gen_constants : register(b0);
+ConstantBuffer<RayGenConstantBuffer> s_rayGenConstants : register(b0);
 
 struct Material {
   float4 AmbientColor;
@@ -25,8 +24,8 @@ struct Vertex {
   float3 Normal;
 };
 
-ByteAddressBuffer index_buffer : register(t1);
-StructuredBuffer<Vertex> vertex_buffer : register(t2);
+ByteAddressBuffer s_indexBuffer : register(t1);
+StructuredBuffer<Vertex> s_vertexBuffer : register(t2);
 
 typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 
@@ -40,9 +39,9 @@ struct RayPayload {
 void RaygenShader() {
   float2 lerpValues = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
 
-  float viewportX = lerp(ray_gen_constants.Viewport.Left, ray_gen_constants.Viewport.Right,
+  float viewportX = lerp(s_rayGenConstants.Viewport.Left, s_rayGenConstants.Viewport.Right,
                           lerpValues.x);
-  float viewportY = lerp(ray_gen_constants.Viewport.Top, ray_gen_constants.Viewport.Bottom,
+  float viewportY = lerp(s_rayGenConstants.Viewport.Top, s_rayGenConstants.Viewport.Bottom,
                           lerpValues.y);
 
   RayDesc ray;
@@ -52,9 +51,9 @@ void RaygenShader() {
   ray.TMax = 10000.0;
   RayPayload payload = { float4(0, 0, 0, 0), 0, 0 };
 
-  TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
+  TraceRay(s_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 
-  RenderTarget[DispatchRaysIndex().xy] = payload.Color;
+  s_raytracingOutput[DispatchRaysIndex().xy] = payload.Color;
 }
 
 // Taken from Microsoft sample.
@@ -70,7 +69,7 @@ uint3 Load3x16BitIndices(uint offsetBytes)
   //  Aligned:     { 0 1 | 2 - }
   //  Not aligned: { - 0 | 1 2 }
   const uint dwordAlignedOffset = offsetBytes & ~3;
-  const uint2 four16BitIndices = index_buffer.Load2(dwordAlignedOffset);
+  const uint2 four16BitIndices = s_indexBuffer.Load2(dwordAlignedOffset);
 
   // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
   if (dwordAlignedOffset == offsetBytes)
@@ -98,12 +97,12 @@ float3 HitAttribute(float3 vertexAttribute[3], IntersectAttributes attr)
 }
 
 [shader("closesthit")]
-void ClosestHitShader(inout RayPayload payload, IntersectAttributes attr) {
+void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAttr) {
   if (payload.IsShadow > 0.5) {
     payload.ShadowHitDist = length(RayTCurrent() * WorldRayDirection());
   } else {
-    float3 barycentrics = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x,
-      attr.barycentrics.y);
+    float3 barycentrics = float3(1 - intersectAttr.barycentrics.x - intersectAttr.barycentrics.y,
+                                 intersectAttr.barycentrics.x, intersectAttr.barycentrics.y);
 
     // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
     uint ibIndexBytes = PrimitiveIndex() * 6 + base_ib_index * 2;
@@ -111,12 +110,12 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes attr) {
     const uint3 indices = Load3x16BitIndices(ibIndexBytes);
 
     float3 triangleNormals[3] = {
-      vertex_buffer[indices[0]].Normal,
-      vertex_buffer[indices[1]].Normal,
-      vertex_buffer[indices[2]].Normal
+      s_vertexBuffer[indices[0]].Normal,
+      s_vertexBuffer[indices[1]].Normal,
+      s_vertexBuffer[indices[2]].Normal
     };
 
-    float3 normal = normalize(HitAttribute(triangleNormals, attr));
+    float3 normal = normalize(HitAttribute(triangleNormals, intersectAttr));
 
     float3 hitPos = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
 
@@ -136,7 +135,7 @@ void ClosestHitShader(inout RayPayload payload, IntersectAttributes attr) {
     shadowRay.TMax = 10000.0;
     RayPayload shadowPayload = { float4(0, 0, 0, 0), 1, 50.0 };
 
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, shadowRay, shadowPayload);
+    TraceRay(s_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, shadowRay, shadowPayload);
 
     float isIlluminated = shadowPayload.ShadowHitDist > length(lightDistVec) ? 1.0 : 0.0;
 
