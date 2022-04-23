@@ -22,8 +22,8 @@ App::App(HWND hwnd) : hwnd_(hwnd) {
   float aspect_ratio = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
 
   ray_gen_constants_.viewport = {
-    -aspect_ratio, 1.f,
-    aspect_ratio, -1.f
+    aspect_ratio, 1.f,
+    -aspect_ratio, -1.f
   };
 }
 
