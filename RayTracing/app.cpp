@@ -112,122 +112,127 @@ void App::CreateCommandObjects()   {
 }
 
 void App::CreatePipeline() {
+  // Global root signature creation.
   {
     CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);
 
-    CD3DX12_ROOT_PARAMETER1 root_params[4] = {};
-    root_params[0].InitAsDescriptorTable(1, &ranges[0]);
-    root_params[1].InitAsShaderResourceView(0);
-    root_params[2].InitAsConstantBufferView(1);
-    root_params[3].InitAsDescriptorTable(1, &ranges[1]);
+    CD3DX12_ROOT_PARAMETER1 rootParams[4] = {};
+    rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
+    rootParams[1].InitAsShaderResourceView(0);
+    rootParams[2].InitAsConstantBufferView(1);
+    rootParams[3].InitAsDescriptorTable(1, &ranges[1]);
 
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
-    root_signature_desc.Init_1_1(_countof(root_params), root_params);
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
 
-    ComPtr<ID3DBlob> signature;
-    ComPtr<ID3DBlob> error;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc,
-                                                        D3D_ROOT_SIGNATURE_VERSION_1_1, &signature,
-                                                        &error));
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(),
-                                               signature->GetBufferSize(),
+    ComPtr<ID3DBlob> signatureBlob;
+    ComPtr<ID3DBlob> errorBlob;
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,
+                                                        D3D_ROOT_SIGNATURE_VERSION_1_1,
+                                                        &signatureBlob, &errorBlob));
+    ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob->GetBufferPointer(),
+                                               signatureBlob->GetBufferSize(),
                                                IID_PPV_ARGS(&m_globalRootSignature)));
   }
 
+  // Ray generation root signature creation.
   {
-    CD3DX12_ROOT_PARAMETER1 root_param{};
-    root_param.InitAsConstants(SizeOfInUint32(m_rayGenConstants), 0, 0);
+    CD3DX12_ROOT_PARAMETER1 rootParam{};
+    rootParam.InitAsConstants(SizeOfInUint32(m_rayGenConstants), 0, 0);
 
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
-    root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
-                                 D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Init_1_1(1, &rootParam, 0, nullptr,
+                               D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
 
-    ComPtr<ID3DBlob> signature;
-    ComPtr<ID3DBlob> error;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc,
-                                                        D3D_ROOT_SIGNATURE_VERSION_1_1, &signature,
-                                                        &error));
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(),
-                                               signature->GetBufferSize(),
-                                               IID_PPV_ARGS(&m_rayGenRootSignature)));
+    ComPtr<ID3DBlob> signatureBlob;
+    ComPtr<ID3DBlob> errorBlob;
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,
+                                                        D3D_ROOT_SIGNATURE_VERSION_1_1,
+                                                        &signatureBlob, &errorBlob));
+    ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob->GetBufferPointer(),
+                                                signatureBlob->GetBufferSize(),
+                                                IID_PPV_ARGS(&m_rayGenRootSignature)));
   }
 
+  // Closest hit root signature creation.
   {
-    CD3DX12_ROOT_PARAMETER1 root_param{};
-    root_param.InitAsConstants(SizeOfInUint32(BlasConstants), 2, 0);
+    CD3DX12_ROOT_PARAMETER1 rootParam{};
+    rootParam.InitAsConstants(SizeOfInUint32(BlasConstants), 2, 0);
 
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
-    root_signature_desc.Init_1_1(1, &root_param, 0, nullptr,
-                                 D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Init_1_1(1, &rootParam, 0, nullptr,
+                               D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
 
-    ComPtr<ID3DBlob> signature;
-    ComPtr<ID3DBlob> error;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&root_signature_desc,
-                                                        D3D_ROOT_SIGNATURE_VERSION_1_1, &signature,
-                                                        &error));
-    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(),
-                                               signature->GetBufferSize(),
+    ComPtr<ID3DBlob> signatureBlob;
+    ComPtr<ID3DBlob> errorBlob;
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,
+                                                        D3D_ROOT_SIGNATURE_VERSION_1_1,
+                                                        &signatureBlob, &errorBlob));
+    ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob->GetBufferPointer(),
+                                               signatureBlob->GetBufferSize(),
                                                IID_PPV_ARGS(&m_closestHitRootSignature)));
   }
 
-  CD3DX12_STATE_OBJECT_DESC pipeline_desc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
+  CD3DX12_STATE_OBJECT_DESC pipelineDesc(D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
 
-  CD3DX12_DXIL_LIBRARY_SUBOBJECT* dxil_lib =
-      pipeline_desc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
+  CD3DX12_DXIL_LIBRARY_SUBOBJECT* dxilLib =
+      pipelineDesc.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
 
   D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE((void*)g_raytracing_shader,
                                                           ARRAYSIZE(g_raytracing_shader));
-  dxil_lib->SetDXILLibrary(&libdxil);
+  dxilLib->SetDXILLibrary(&libdxil);
 
-  const wchar_t* shader_names[] = { k_rayGenShaderName, k_closestHitShaderName, k_missShaderName };
-  dxil_lib->DefineExports(shader_names);
+  const wchar_t* shaderNames[] = { k_rayGenShaderName, k_closestHitShaderName, k_missShaderName };
+  dxilLib->DefineExports(shaderNames);
 
-  CD3DX12_HIT_GROUP_SUBOBJECT* hit_group =
-      pipeline_desc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-  hit_group->SetClosestHitShaderImport(k_closestHitShaderName);
-  hit_group->SetHitGroupExport(k_hitGroupName);
-  hit_group->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+  CD3DX12_HIT_GROUP_SUBOBJECT* hitGroup =
+      pipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+  hitGroup->SetClosestHitShaderImport(k_closestHitShaderName);
+  hitGroup->SetHitGroupExport(k_hitGroupName);
+  hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
-  CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT* shader_config =
-      pipeline_desc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-  UINT payload_size = sizeof(float) * 6;
-  UINT attribute_size = sizeof(float) * 2;
-  shader_config->Config(payload_size, attribute_size);
+  CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT* shaderConfig =
+      pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
+  UINT payloadSize = sizeof(float) * 6;
+  UINT attributesSize = sizeof(float) * 2;
+  shaderConfig->Config(payloadSize, attributesSize);
 
   {
-    CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* local_root_signature =
-        pipeline_desc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
-    local_root_signature->SetRootSignature(m_rayGenRootSignature.Get());
+    CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* localRootSigSubObj =
+        pipelineDesc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
+    localRootSigSubObj->SetRootSignature(m_rayGenRootSignature.Get());
 
     CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
-        pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
-    association->SetSubobjectToAssociate(*local_root_signature);
+        pipelineDesc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
+    association->SetSubobjectToAssociate(*localRootSigSubObj);
     association->AddExport(k_rayGenShaderName);
   }
 
   {
-    CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* local_root_signature =
-        pipeline_desc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
-    local_root_signature->SetRootSignature(m_closestHitRootSignature.Get());
+    CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT* localRootSigSubObj =
+        pipelineDesc.CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
+    localRootSigSubObj->SetRootSignature(m_closestHitRootSignature.Get());
 
     CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
-        pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
-    association->SetSubobjectToAssociate(*local_root_signature);
+        pipelineDesc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
+    association->SetSubobjectToAssociate(*localRootSigSubObj);
     association->AddExport(k_closestHitShaderName);
   }
 
-  CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT* global_root_signature =
-      pipeline_desc.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
-  global_root_signature->SetRootSignature(m_globalRootSignature.Get());
+  {
+    CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT* globalRootSigSubObj =
+        pipelineDesc.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
+    globalRootSigSubObj->SetRootSignature(m_globalRootSignature.Get());
+  }
 
-  CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT* pipeline_config =
-      pipeline_desc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
+  CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT* pipelineConfig =
+      pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
   UINT max_recursion_depth = 2;
-  pipeline_config->Config(max_recursion_depth);
+  pipelineConfig->Config(max_recursion_depth);
 
-  ThrowIfFailed(m_dxrDevice->CreateStateObject(pipeline_desc, IID_PPV_ARGS(&m_dxrStateObject)));
+  ThrowIfFailed(m_dxrDevice->CreateStateObject(pipelineDesc, IID_PPV_ARGS(&m_dxrStateObject)));
 }
 
 void App::CreateDescriptorHeap() {
