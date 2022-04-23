@@ -104,7 +104,7 @@ private:
      UINT64 FenceValue = 0;
    };
 
-   Frame m_Frames[k_NumFrames];
+   Frame m_Frames[k_numFrames];
 
    RayGenConstantBuffer m_rayGenConstants;
 

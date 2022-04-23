@@ -1,14 +1,14 @@
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 
-constexpr int k_NumFrames = 3;
+constexpr int k_numFrames = 3;
 
-constexpr int kWindowWidth = 1024;
-constexpr int kWindowHeight = 768;
+constexpr int k_windowWidth = 1024;
+constexpr int k_windowHeight = 768;
 
-extern const wchar_t* kHitGroupName;
-extern const wchar_t* kRayGenShaderName;
-extern const wchar_t* kClosestHitShaderName;
-extern const wchar_t* kMissShaderName;
+extern const wchar_t* k_hitGroupName;
+extern const wchar_t* k_rayGenShaderName;
+extern const wchar_t* k_closestHitShaderName;
+extern const wchar_t* k_missShaderName;
 
 #endif  // CONSTANTS_H_

@@ -1,6 +1,6 @@
 #include "constants.h"
 
-const wchar_t* kHitGroupName = L"HitGroup";
-const wchar_t* kRayGenShaderName = L"RaygenShader";
-const wchar_t* kClosestHitShaderName = L"ClosestHitShader";
-const wchar_t* kMissShaderName = L"MissShader";
+const wchar_t* k_hitGroupName = L"HitGroup";
+const wchar_t* k_rayGenShaderName = L"RaygenShader";
+const wchar_t* k_closestHitShaderName = L"ClosestHitShader";
+const wchar_t* k_missShaderName = L"MissShader";

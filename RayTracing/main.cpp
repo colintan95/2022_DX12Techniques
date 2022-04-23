@@ -29,7 +29,7 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE prev_hinstance, LPSTR cmd_line
   RegisterClassEx(&window_class);
 
   HWND hwnd = CreateWindow(window_class.lpszClassName, L"Ray Tracing", WS_OVERLAPPEDWINDOW,
-                           CW_USEDEFAULT, CW_USEDEFAULT, kWindowWidth, kWindowHeight, nullptr,
+                           CW_USEDEFAULT, CW_USEDEFAULT, k_windowWidth, k_windowHeight, nullptr,
                            nullptr, hinstance, nullptr);
   ShowWindow(hwnd, cmd_show);
 

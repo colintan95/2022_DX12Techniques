@@ -19,12 +19,9 @@ UINT Align(UINT size, UINT alignment) {
 }  // namespace
 
 App::App(HWND hwnd) : m_hwnd(hwnd) {
-  float aspect_ratio = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
+  float aspectRatio = static_cast<float>(k_windowWidth) / static_cast<float>(k_windowHeight);
 
-  m_rayGenConstants.Viewport = {
-    aspect_ratio, 1.f,
-    -aspect_ratio, -1.f
-  };
+  m_rayGenConstants.Viewport = { aspectRatio, 1.f, -aspectRatio, -1.f };
 }
 
 void App::Initialize() {
@@ -78,9 +75,9 @@ void App::InitDeviceAndSwapChain() {
   ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 
    DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
-  swapChainDesc.BufferCount = k_NumFrames;
-  swapChainDesc.Width = kWindowWidth;
-  swapChainDesc.Height = kWindowHeight;
+  swapChainDesc.BufferCount = k_numFrames;
+  swapChainDesc.Width = k_windowWidth;
+  swapChainDesc.Height = k_windowHeight;
   swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
   swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
   swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -93,7 +90,7 @@ void App::InitDeviceAndSwapChain() {
 }
 
 void App::CreateCommandObjects()   {
-  for (int i = 0; i < k_NumFrames; ++i) {
+  for (int i = 0; i < k_numFrames; ++i) {
     ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
                                                    IID_PPV_ARGS(&m_Frames[i].CommandAllocator)));
   }
@@ -184,13 +181,13 @@ void App::CreatePipeline() {
                                                           ARRAYSIZE(g_raytracing_shader));
   dxil_lib->SetDXILLibrary(&libdxil);
 
-  const wchar_t* shader_names[] = { kRayGenShaderName, kClosestHitShaderName, kMissShaderName };
+  const wchar_t* shader_names[] = { k_rayGenShaderName, k_closestHitShaderName, k_missShaderName };
   dxil_lib->DefineExports(shader_names);
 
   CD3DX12_HIT_GROUP_SUBOBJECT* hit_group =
       pipeline_desc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-  hit_group->SetClosestHitShaderImport(kClosestHitShaderName);
-  hit_group->SetHitGroupExport(kHitGroupName);
+  hit_group->SetClosestHitShaderImport(k_closestHitShaderName);
+  hit_group->SetHitGroupExport(k_hitGroupName);
   hit_group->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
   CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT* shader_config =
@@ -207,7 +204,7 @@ void App::CreatePipeline() {
     CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
         pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
     association->SetSubobjectToAssociate(*local_root_signature);
-    association->AddExport(kRayGenShaderName);
+    association->AddExport(k_rayGenShaderName);
   }
 
   {
@@ -218,7 +215,7 @@ void App::CreatePipeline() {
     CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT* association =
         pipeline_desc.CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
     association->SetSubobjectToAssociate(*local_root_signature);
-    association->AddExport(kClosestHitShaderName);
+    association->AddExport(k_closestHitShaderName);
   }
 
   CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT* global_root_signature =
@@ -288,7 +285,7 @@ void App::InitData() {
 }
 
 void App::CreateBuffersAndViews() {;
-  for (int i = 0; i < k_NumFrames; ++i) {
+  for (int i = 0; i < k_numFrames; ++i) {
     ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_Frames[i].SwapChainBuffer)));
   }
 
@@ -334,8 +331,8 @@ void App::CreateBuffersAndViews() {;
 
   {
     CD3DX12_RESOURCE_DESC output_desc =
-        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, kWindowWidth, kWindowHeight, 1, 1,
-                                     1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, k_windowWidth, k_windowHeight, 1,
+                                     1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
     CD3DX12_HEAP_PROPERTIES heap_props(D3D12_HEAP_TYPE_DEFAULT);
 
@@ -384,9 +381,9 @@ void App::CreateShaderTables() {
   ComPtr<ID3D12StateObjectProperties> state_object_props;
   ThrowIfFailed(m_dxrStateObject.As(&state_object_props));
 
-  void* ray_gen_shader_identifier = state_object_props->GetShaderIdentifier(kRayGenShaderName);
-  void* hit_group_shader_identifier = state_object_props->GetShaderIdentifier(kHitGroupName);
-  void* miss_shader_identifier = state_object_props->GetShaderIdentifier(kMissShaderName);
+  void* ray_gen_shader_identifier = state_object_props->GetShaderIdentifier(k_rayGenShaderName);
+  void* hit_group_shader_identifier = state_object_props->GetShaderIdentifier(k_hitGroupName);
+  void* miss_shader_identifier = state_object_props->GetShaderIdentifier(k_missShaderName);
 
   UINT shader_identifier_size = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
@@ -656,8 +653,8 @@ void App::RenderFrame() {
   dispatch_desc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
   dispatch_desc.MissShaderTable.StrideInBytes = dispatch_desc.MissShaderTable.SizeInBytes;
 
-  dispatch_desc.Width = kWindowWidth;
-  dispatch_desc.Height = kWindowHeight;
+  dispatch_desc.Width = k_windowWidth;
+  dispatch_desc.Height = k_windowHeight;
   dispatch_desc.Depth = 1;
 
   m_dxrCommandList->SetPipelineState1(m_dxrStateObject.Get());
