@@ -19,8 +19,10 @@ typedef BuiltInTriangleIntersectionAttributes IntersectAttributes;
 
 struct RayPayload {
   float4 Color;
-  float IsShadow;
-  float ShadowHitDist;
+};
+
+struct ShadowRayPayload {
+  bool IsOccluded;
 };
 
 // Global descriptors.
@@ -52,9 +54,9 @@ void RaygenShader() {
   RayDesc ray;
   ray.Origin = float3(0, 1, 4.f);
   ray.Direction = float3(viewportX * 0.414f, viewportY * 0.414f, -1.f);
-  ray.TMin = 0.001;
+  ray.TMin = 0.0;
   ray.TMax = 10000.0;
-  RayPayload payload = { float4(0, 0, 0, 0), 0, 0 };
+  RayPayload payload = { float4(0, 0, 0, 0) };
 
   TraceRay(s_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
 
@@ -103,52 +105,57 @@ float3 HitAttribute(float3 vertexAttribute[3], IntersectAttributes attr)
 
 [shader("closesthit")]
 void ClosestHitShader(inout RayPayload payload, IntersectAttributes intersectAttr) {
-  if (payload.IsShadow > 0.5) {
-    payload.ShadowHitDist = length(RayTCurrent() * WorldRayDirection());
-  } else {
-    float3 barycentrics = float3(1 - intersectAttr.barycentrics.x - intersectAttr.barycentrics.y,
-                                 intersectAttr.barycentrics.x, intersectAttr.barycentrics.y);
+  float3 barycentrics = float3(1 - intersectAttr.barycentrics.x - intersectAttr.barycentrics.y,
+                                intersectAttr.barycentrics.x, intersectAttr.barycentrics.y);
 
-    // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
-    uint ibIndexBytes = PrimitiveIndex() * 6 + s_closestHitConstants.BaseIbIndex * 2;
+  // Stride of indices in triangle is index size in bytes * indices per triangle => 2 * 3 = 6.
+  uint ibIndexBytes = PrimitiveIndex() * 6 + s_closestHitConstants.BaseIbIndex * 2;
 
-    const uint3 indices = Load3x16BitIndices(ibIndexBytes);
+  const uint3 indices = Load3x16BitIndices(ibIndexBytes);
 
-    float3 triangleNormals[3] = {
-      s_vertexBuffer[indices[0]].Normal,
-      s_vertexBuffer[indices[1]].Normal,
-      s_vertexBuffer[indices[2]].Normal
-    };
+  float3 triangleNormals[3] = {
+    s_vertexBuffer[indices[0]].Normal,
+    s_vertexBuffer[indices[1]].Normal,
+    s_vertexBuffer[indices[2]].Normal
+  };
 
-    float3 normal = normalize(HitAttribute(triangleNormals, intersectAttr));
+  float3 normal = normalize(HitAttribute(triangleNormals, intersectAttr));
 
-    float3 hitPos = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
+  float3 hitPos = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
 
-    float3 lightPos = float3(0.0, 1.9, 0.0);
-    float3 lightDistVec = lightPos - hitPos;
-    float3 lightDir = normalize(lightDistVec);
+  float3 lightPos = float3(0.0, 1.9, 0.0);
+  float3 lightDistVec = lightPos - hitPos;
+  float3 lightDir = normalize(lightDistVec);
 
-    Material mtl = s_materials[s_closestHitConstants.MaterialIndex];
+  Material mtl = s_materials[s_closestHitConstants.MaterialIndex];
 
-    float3 ambient = mtl.AmbientColor.rgb;
-    float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;
+  float3 ambient = mtl.AmbientColor.rgb;
+  float3 diffuse = clamp(dot(lightDir, normal), 0.0, 1.0) * mtl.DiffuseColor.rgb;
 
-    RayDesc shadowRay;
-    shadowRay.Origin = hitPos;
-    shadowRay.Direction = lightDir;
-    shadowRay.TMin = 0.001;
-    shadowRay.TMax = 10000.0;
-    RayPayload shadowPayload = { float4(0, 0, 0, 0), 1, 50.0 };
+  RayDesc shadowRay;
+  shadowRay.Origin = hitPos;
+  shadowRay.Direction = lightDir;
+  shadowRay.TMin = 0.0;
+  shadowRay.TMax = length(lightDistVec);
+  ShadowRayPayload shadowPayload = { true };
 
-    TraceRay(s_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, shadowRay, shadowPayload);
+  TraceRay(s_scene,
+            RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+            RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, ~0, 0, 1, 1, shadowRay,
+            shadowPayload);
 
-    float isIlluminated = shadowPayload.ShadowHitDist > length(lightDistVec) ? 1.0 : 0.0;
+  // float isIlluminated = shadowPayload.ShadowHitDist > length(lightDistVec) ? 1.0 : 0.0;
+  float isIlluminated = shadowPayload.IsOccluded ? 0.0 : 1.0;
 
-    payload.Color = float4(0.3 * ambient + isIlluminated * diffuse, 1);
-  }
+  payload.Color = float4(0.3 * ambient + isIlluminated * diffuse, 1);
 }
 
 [shader("miss")]
 void MissShader(inout RayPayload payload) {
   payload.Color = float4(0, 0, 0, 1);
+}
+
+[shader("miss")]
+void ShadowMissShader(inout ShadowRayPayload payload) {
+  payload.IsOccluded = false;
 }

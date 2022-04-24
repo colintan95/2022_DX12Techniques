@@ -97,6 +97,7 @@ private:
    Microsoft::WRL::ComPtr<ID3D12Resource> m_missShaderTable;
 
    UINT m_hitGroupShaderRecordSize = 0;
+   UINT m_missShaderRecordSize = 0;
 
    Microsoft::WRL::ComPtr<ID3D12Resource> m_blas;
    Microsoft::WRL::ComPtr<ID3D12Resource> m_tlas;

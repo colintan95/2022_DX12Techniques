@@ -11,4 +11,6 @@ extern const wchar_t* k_rayGenShaderName;
 extern const wchar_t* k_closestHitShaderName;
 extern const wchar_t* k_missShaderName;
 
+extern const wchar_t* k_shadowMissShaderName;
+
 #endif  // CONSTANTS_H_

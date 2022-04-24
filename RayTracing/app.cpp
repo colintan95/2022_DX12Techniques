@@ -183,7 +183,9 @@ void App::CreatePipeline() {
                                                           ARRAYSIZE(g_raytracing_shader));
   dxilLib->SetDXILLibrary(&libdxil);
 
-  const wchar_t* shaderNames[] = { k_rayGenShaderName, k_closestHitShaderName, k_missShaderName };
+  const wchar_t* shaderNames[] = {
+    k_rayGenShaderName, k_closestHitShaderName, k_missShaderName, k_shadowMissShaderName
+  };
   dxilLib->DefineExports(shaderNames);
 
   CD3DX12_HIT_GROUP_SUBOBJECT* hitGroup =
@@ -194,7 +196,7 @@ void App::CreatePipeline() {
 
   CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT* shaderConfig =
       pipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-  UINT payloadSize = sizeof(float) * 6;
+  UINT payloadSize = sizeof(float) * 4;
   UINT attributesSize = sizeof(float) * 2;
   shaderConfig->Config(payloadSize, attributesSize);
 
@@ -414,7 +416,6 @@ void App::CreateShaderTables() {
 
   void* rayGenShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_rayGenShaderName);
   void* hitGroupShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_hitGroupName);
-  void* missShaderIdentifier = stateObjectProps->GetShaderIdentifier(k_missShaderName);
 
   UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
@@ -482,10 +483,15 @@ void App::CreateShaderTables() {
   }
 
   {
+    void* missShaderId = stateObjectProps->GetShaderIdentifier(k_missShaderName);
+    void* shadowMissShaderId = stateObjectProps->GetShaderIdentifier(k_shadowMissShaderName);
+
+    m_missShaderRecordSize = Align(shaderIdentifierSize,
+                                   D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC bufferDesc =
-        CD3DX12_RESOURCE_DESC::Buffer(Align(shaderIdentifierSize,
-                                            D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT));
+        CD3DX12_RESOURCE_DESC::Buffer(m_missShaderRecordSize * 2);
 
     ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
                                                     &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -494,7 +500,10 @@ void App::CreateShaderTables() {
     uint8_t* ptr;
     ThrowIfFailed(m_missShaderTable->Map(0, nullptr, reinterpret_cast<void**>(&ptr)));
 
-    memcpy(ptr, missShaderIdentifier, shaderIdentifierSize);
+    memcpy(ptr, missShaderId, shaderIdentifierSize);
+    ptr += shaderIdentifierSize;
+
+    memcpy(ptr, shadowMissShaderId, shaderIdentifierSize);
 
     m_missShaderTable->Unmap(0, nullptr);
   }
@@ -671,7 +680,7 @@ void App::RenderFrame() {
 
   dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
   dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-  dispatchDesc.MissShaderTable.StrideInBytes = dispatchDesc.MissShaderTable.SizeInBytes;
+  dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderRecordSize;
 
   dispatchDesc.Width = k_windowWidth;
   dispatchDesc.Height = k_windowHeight;
